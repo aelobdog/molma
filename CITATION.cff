@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+title: Molma
+message: "If you use this software, please cite it."
+type: software
+
+authors:
+  - family-names: Godbole
+    given-names: Ashwin K.
+
+repository-code: "https://github.com/aelobdog/molma"
+
+license: Apache-2.0
+
+version: 0.1.0
+date-released: 2026-05-09
