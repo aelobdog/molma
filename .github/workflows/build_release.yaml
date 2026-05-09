@@ -1,0 +1,113 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive: odin-linux-amd64-dev-2026-05.tar.gz
+            output: myapp
+
+          - os: windows-latest
+            archive: odin-windows-amd64-dev-2026-05.zip
+            output: myapp.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # Download Odin
+      # -----------------------------
+
+      - name: Download Odin (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -L \
+            https://github.com/odin-lang/Odin/releases/download/dev-2026-05/${{ matrix.archive }} \
+            -o odin.tar.gz
+
+      - name: Download Odin (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://github.com/odin-lang/Odin/releases/download/dev-2026-05/${{ matrix.archive }}" `
+            -OutFile odin.zip
+
+      # -----------------------------
+      # Extract Odin
+      # -----------------------------
+
+      - name: Extract Odin (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir odin
+          tar -xzf odin.tar.gz -C odin
+          echo "$PWD/odin" >> $GITHUB_PATH
+
+      - name: Extract Odin (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Expand-Archive odin.zip odin
+          echo "$PWD/odin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      # -----------------------------
+      # Verify Odin
+      # -----------------------------
+
+      - name: Odin version
+        run: odin version
+
+      # -----------------------------
+      # Create build directory
+      # -----------------------------
+
+      - name: Create build directory (Linux)
+        if: runner.os == 'Linux'
+        run: mkdir -p build
+
+      - name: Create build directory (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force build
+
+      # -----------------------------
+      # Build project
+      # -----------------------------
+
+      - name: Build project (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          odin build . \
+            -o:speed \
+            -out:build/${{ matrix.output }}
+
+      - name: Build project (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          odin build . `
+            -o:speed `
+            -out:build/${{ matrix.output }}
+
+      # -----------------------------
+      # Upload artifacts
+      # -----------------------------
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ runner.os }}
+          path: build/
