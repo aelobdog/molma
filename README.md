@@ -4,6 +4,9 @@ Molma is a molecule editor/visualizer program for [POSCAR](https://www.vasp.at/w
 
 The goal is to be able to easily design molecules for VASP based simulation studies.
 
+## Screenshot
+![image](./molma.png)
+
 ## Status
 
 This is very much alpha software!
