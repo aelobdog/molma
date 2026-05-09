@@ -1,8 +1,9 @@
-name: Build
+name: Build and Release
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
+    tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
 
@@ -13,101 +14,55 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            archive: odin-linux-amd64-dev-2026-05.tar.gz
-            output: myapp
-
+            output: molma
           - os: windows-latest
-            archive: odin-windows-amd64-dev-2026-05.zip
-            output: myapp.exe
+            output: molma.exe
 
     runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -----------------------------
-      # Download Odin
+      # Setup Odin
       # -----------------------------
-
-      - name: Download Odin (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          curl -L \
-            https://github.com/odin-lang/Odin/releases/download/dev-2026-05/${{ matrix.archive }} \
-            -o odin.tar.gz
-
-      - name: Download Odin (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Invoke-WebRequest `
-            -Uri "https://github.com/odin-lang/Odin/releases/download/dev-2026-05/${{ matrix.archive }}" `
-            -OutFile odin.zip
-
-      # -----------------------------
-      # Extract Odin
-      # -----------------------------
-
-      - name: Extract Odin (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir odin
-          tar -xzf odin.tar.gz -C odin
-          echo "$PWD/odin" >> $GITHUB_PATH
-
-      - name: Extract Odin (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Expand-Archive odin.zip odin
-          echo "$PWD/odin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      # -----------------------------
-      # Verify Odin
-      # -----------------------------
-
-      - name: Odin version
-        run: odin version
-
-      # -----------------------------
-      # Create build directory
-      # -----------------------------
-
-      - name: Create build directory (Linux)
-        if: runner.os == 'Linux'
-        run: mkdir -p build
-
-      - name: Create build directory (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: New-Item -ItemType Directory -Force build
+      - name: Setup Odin
+        uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: "dev-2026-05" 
 
       # -----------------------------
       # Build project
       # -----------------------------
-
-      - name: Build project (Linux)
-        if: runner.os == 'Linux'
+      - name: Build project
+        shell: bash
         run: |
-          odin build . \
-            -o:speed \
-            -out:build/${{ matrix.output }}
-
-      - name: Build project (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          odin build . `
-            -o:speed `
-            -out:build/${{ matrix.output }}
+          mkdir -p build
+          odin build . -o:speed -out:build/${{ matrix.output }}
 
       # -----------------------------
-      # Upload artifacts
+      # Upload Artifacts (Internal)
       # -----------------------------
-
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ runner.os }}
           path: build/
+
+      # -----------------------------
+      # Create GitHub Release (Public)
+      # -----------------------------
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        # Only run this step if we pushed a tag (e.g., v1.0.0)
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: build/${{ matrix.output }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

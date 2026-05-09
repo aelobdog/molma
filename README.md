@@ -7,6 +7,8 @@ The goal is to be able to easily design molecules for VASP based simulation stud
 ## Status
 
 This is very much alpha software!
+This software is under heavy development, so please have patience.
+Please report any issues you come across.
 
 ## Build
 ```bash
