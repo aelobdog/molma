@@ -138,7 +138,7 @@ update_selection_to_hovering_over :: proc(state: ^State) {
 }
 
 main :: proc() {
-    poscar_filename := "Ge.vasp"
+    poscar_filename := "test-files/Ge.vasp"
     poscar, poscar_ok := poscar_parse(poscar_filename)
     if !poscar_ok {
         fmt.println("Could not parse {}", poscar_filename)
@@ -151,7 +151,9 @@ main :: proc() {
     rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Molma v0.1")
     defer rl.CloseWindow()
 
-    font := rl.LoadFont("fonts/JetBrainsMono-2.304/JetBrainsMono-Regular.ttf")
+    executable_dir := rl.GetApplicationDirectory()
+    font_path := fmt.ctprintf("%s/%s", executable_dir, "fonts/JetBrainsMono-2.304/JetBrainsMono-Regular.ttf")
+    font := rl.LoadFont(font_path)
     defer rl.UnloadFont(font)
 
     // GUI Styling
