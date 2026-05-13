@@ -143,6 +143,9 @@ main :: proc() {
     if !poscar_ok {
         fmt.println("Could not parse {}", poscar_filename)
     }
+    
+    // note(aelobdog): remove this later
+    _ = poscar_write("temp.vasp", poscar)
 
     rl.SetTraceLogLevel(.WARNING)
     context.logger = log.create_console_logger()
