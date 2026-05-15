@@ -38,6 +38,10 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           release: "dev-2026-05" 
 
+      - name: Install dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
+
       # -----------------------------
       # Build project
       # -----------------------------

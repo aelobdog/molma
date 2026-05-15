@@ -10,6 +10,7 @@ import "core:math"
 import "core:fmt"
 import "core:strconv"
 import rl "vendor:raylib"
+import nfd "nativefiledialog-odin"
 
 WINDOW_HEIGHT :: 600
 WINDOW_WIDTH :: 800
@@ -151,6 +152,11 @@ main :: proc() {
     context.logger = log.create_console_logger()
     rl.SetConfigFlags({ rl.ConfigFlag.WINDOW_RESIZABLE, rl.ConfigFlag.WINDOW_ALWAYS_RUN })
 
+    open_path: cstring
+    save_path: cstring
+    nfd.Init()
+    defer nfd.Quit()
+
     rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Molma v0.1")
     defer rl.CloseWindow()
 
@@ -230,6 +236,35 @@ main :: proc() {
             }
             else {
                 change_mode_to(&state, .ROTATE)
+            }
+        }
+
+        // note(aelobdog): temporary
+        if rl.IsKeyPressed(.O) {
+            result := nfd.OpenDialogU8(&open_path, nil, 0, nil)
+            switch result {
+            case .Okay: {
+                fmt.println("Success!")
+                fmt.println(open_path)
+                nfd.FreePathU8(open_path)
+            }
+            case .Cancel: fmt.println("User pressed cancel.")
+            case .Error: fmt.println("Error:", nfd.GetError())
+            }
+        }
+
+        // note(aelobdog): temporary
+        if rl.IsKeyPressed(.S) {
+            result := nfd.SaveDialogU8(&save_path, nil, 0, nil, nil)
+            switch result {
+            case .Okay: {
+                fmt.println("Success!")
+                fmt.println(save_path)
+                _ = poscar_write(string(save_path), poscar)
+                nfd.FreePathU8(save_path)
+            }
+            case .Cancel: fmt.println("User pressed cancel.")
+            case .Error: fmt.println("Error:", nfd.GetError())
             }
         }
 

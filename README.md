@@ -25,4 +25,7 @@ Licensed under Apache-2.0
 see `CITATION.cff`
 
 ## Thirdparty Notices
-This application distributes the JetBrainsMono font, licensed under the SIL Open Font License 1.1.
+- This application distributes the JetBrainsMono font, licensed under the SIL Open Font License 1.1.
+- This application uses the [nativefiledialog-odin](https://github.com/ivansouzamf/nativefiledialog-odin) library
+    - This library is based on and distributes binaries and wrappers for the original [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended) library
+
