@@ -240,36 +240,7 @@ main :: proc() {
        change_mode_to(&state, .ROTATE)
        }
    }
-
-   // note(aelobdog): temporary
-   if rl.IsKeyPressed(.O) {
-   result := nfd.OpenDialogU8(&open_path, nil, 0, nil)
-   switch result {
-   case .Okay: {
-   fmt.println("Success!")
-   fmt.println(open_path)
-   nfd.FreePathU8(open_path)
-   }
-   case .Cancel: fmt.println("User pressed cancel.")
-   case .Error: fmt.println("Error:", nfd.GetError())
-   }
-        }
-
-        // note(aelobdog): temporary
-        if rl.IsKeyPressed(.S) {
-        result := nfd.SaveDialogU8(&save_path, nil, 0, nil, nil)
-        switch result {
-        case .Okay: {
-        fmt.println("Success!")
-        fmt.println(save_path)
-        _ = poscar_write(string(save_path), poscar)
-        nfd.FreePathU8(save_path)
-        }
-        case .Cancel: fmt.println("User pressed cancel.")
-        case .Error: fmt.println("Error:", nfd.GetError())
-        }
-    }
-    */
+   */
 
         rot_matrix := rl.QuaternionToMatrix(state.rotate.molecule_rotation)
 

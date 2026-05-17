@@ -81,11 +81,32 @@ toolbar_draw :: proc(state: ^State) {
 
         if item.is_stateful {
             if rl.GuiButton(rect, rl.GuiIconText(item.icon_name, "")) {
-                if state.toolbar.button_states[item.id] == true {
-                    state.toolbar.button_states[item.id] = false
+                switch item.id {
+                case .ButtonRotate : {
+                    if state.toolbar.button_states[item.id] == true {
+                        state.toolbar.button_states[item.id] = false
+                        change_mode_to(state, .NONE)
+                    }
+                    else {
+                        state.toolbar.button_states[item.id] = true
+                        change_mode_to(state, .ROTATE)
+                    }
                 }
-                else {
-                    state.toolbar.button_states[item.id] = true
+                case .ButtonSelect : {
+                    if state.toolbar.button_states[item.id] == true {
+                        state.toolbar.button_states[item.id] = false
+                        state.select.last_selected = -1
+                        state.select.curr_selected = -1
+                        state.hovering_over_sphere = -1
+                        change_mode_to(state, .NONE)
+                    }
+                    else {
+                        state.toolbar.button_states[item.id] = true
+                        change_mode_to(state, .SELECT)
+                    }
+                }
+                case .FileOpen : // do nothing
+                case .FileSave : // do nothing
                 }
             }
 
