@@ -6,6 +6,8 @@ import "core:log"
 import "core:math"
 import "core:fmt"
 import "core:strconv"
+import "core:strings"
+import "core:path/slashpath"
 import rl "vendor:raylib"
 import nfd "nativefiledialog-odin"
 
@@ -108,9 +110,8 @@ eps             :: 1e-3
 
 toolbar_default_position :: rl.Vector2 {toolbar_padding, 100}
 
-init_state :: proc(state: ^State, font: rl.Font) {
-    state.font = font
-    measure_text := rl.MeasureTextEx(font, "-0.000000", ui_font_size, ui_font_spacing)
+init_state :: proc(state: ^State) {
+    measure_text := rl.MeasureTextEx(state.font, "-0.000000", ui_font_size, ui_font_spacing)
     state.mode = .NONE
     state.hovering_over_sphere = -1
     state.select = Select {
@@ -161,21 +162,17 @@ main :: proc() {
     rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Molma v0.1")
     defer rl.CloseWindow()
 
-    executable_dir := rl.GetApplicationDirectory()
-    font_path := fmt.ctprintf("%s/%s", executable_dir, "fonts/JetBrainsMono-2.304/JetBrainsMono-Regular.ttf")
-    font := rl.LoadFont(font_path)
-    defer rl.UnloadFont(font)
+    state: State
+    executable_dir := string(rl.GetApplicationDirectory())
+    font_path := slashpath.join({executable_dir, "fonts", "JetBrainsMono-2.304", "JetBrainsMono-Regular.ttf"})
+    fmt.println(font_path)
+    state.font = rl.LoadFont(strings.clone_to_cstring(font_path))
+    defer rl.UnloadFont(state.font)
 
-    // GUI Styling
-    // rl.GuiSetFont(font)
-    // rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
-    // TB_BG_COLOR := i32(rl.ColorToInt(rl.ORANGE))
-    // rl.GuiSetStyle(.DEFAULT, i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL), TB_BG_COLOR)
-    // rl.GuiSetStyle(.DEFAULT, i32(rl.GuiControlProperty.BASE_COLOR_NORMAL), TB_BG_COLOR)
-
+    rl.GuiSetFont(state.font)
+    rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
     rl.SetTargetFPS(60)
 
-    state: State
     poscar_filename := "test-files/Ge.vasp"
     poscar_ok: bool
     state.poscar, poscar_ok = poscar_parse(poscar_filename)
@@ -218,29 +215,6 @@ main :: proc() {
         fovy -= (zoom * ZOOM_SCALE)
         fovy = clamp(fovy, 1.0, 1000.0)
         state.camera.fovy = rl.Lerp(state.camera.fovy, fovy, 0.15)
-
-        /*
-           if rl.IsKeyPressed(.E) {
-           if state.mode == .SELECT {
-           state.select.last_selected = -1
-           state.select.curr_selected = -1
-           state.hovering_over_sphere = -1
-           change_mode_to(&state, .NONE)
-           }
-           else {
-           change_mode_to(&state, .SELECT)
-           }
-       }
-
-       if rl.IsKeyPressed(.R) {
-       if state.mode == .ROTATE {
-       state.mode = .NONE
-       }
-       else {
-       change_mode_to(&state, .ROTATE)
-       }
-   }
-   */
 
         rot_matrix := rl.QuaternionToMatrix(state.rotate.molecule_rotation)
 
@@ -329,7 +303,7 @@ main :: proc() {
         toolbar_draw(&state)
 
         if state.mode == .SELECT {
-            draw_edit_ui(font, &state, state.poscar.atoms[:], &state.bonds)
+            draw_edit_ui(&state)
         }
     }
 }
@@ -361,7 +335,7 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
         projection = rl.CameraProjection.ORTHOGRAPHIC,
     }
 
-    init_state(state, state.font)
+    init_state(state)
     return
 }
 
@@ -438,9 +412,9 @@ draw_help :: proc(font: rl.Font, state: ^State) {
     rl.DrawTextEx(font, "R: rotate", {10, 70}, 32.0, 2.0, rl.ORANGE)
 }
 
-draw_edit_ui :: proc(font: rl.Font, state: ^State, atoms: []Atom, bonds: ^Bonds) {
+draw_edit_ui :: proc(state: ^State) {
     if state.select.curr_selected != -1 && state.select.curr_selected != state.select.last_selected {
-        edit_atom_pos := atoms[state.select.curr_selected].position
+        edit_atom_pos := state.poscar.atoms[state.select.curr_selected].position
         fmt.bprintf(state.select.xpos[:], "%.6f", edit_atom_pos.x)
         fmt.bprintf(state.select.ypos[:], "%.6f", edit_atom_pos.y)
         fmt.bprintf(state.select.zpos[:], "%.6f", edit_atom_pos.z)
@@ -487,13 +461,13 @@ draw_edit_ui :: proc(font: rl.Font, state: ^State, atoms: []Atom, bonds: ^Bonds)
         ) 
 
         // reconcile data between string position and real position
-        selected_atom := &atoms[state.select.curr_selected]
+        selected_atom := &state.poscar.atoms[state.select.curr_selected]
         if tb1 {
             state.select.ui_edit_mode[0] = !state.select.ui_edit_mode[0]
             if value, ok := strconv.parse_f32(string(cstring(&state.select.xpos[0]))); ok {
                 if value != selected_atom.position.x {
                     selected_atom.position.x = value
-                    populate_bonds(bonds, atoms[:])
+                    populate_bonds(&state.bonds, state.poscar.atoms[:])
                 }
             }
         }
@@ -502,7 +476,7 @@ draw_edit_ui :: proc(font: rl.Font, state: ^State, atoms: []Atom, bonds: ^Bonds)
             if value, ok := strconv.parse_f32(string(cstring(&state.select.ypos[0]))); ok {
                 if value != selected_atom.position.y {
                     selected_atom.position.y = value 
-                    populate_bonds(bonds, atoms[:])
+                    populate_bonds(&(state.bonds), state.poscar.atoms[:])
                 }
             }
         }
@@ -511,7 +485,7 @@ draw_edit_ui :: proc(font: rl.Font, state: ^State, atoms: []Atom, bonds: ^Bonds)
             if value, ok := strconv.parse_f32(string(cstring(&state.select.zpos[0]))); ok {
                 if value != selected_atom.position.z {
                     selected_atom.position.z = value 
-                    populate_bonds(bonds, atoms[:])
+                    populate_bonds(&(state.bonds), state.poscar.atoms[:])
                 }
             }
         }
