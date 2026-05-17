@@ -1,6 +1,3 @@
-// Copyright 2026 Ashwin K. Godbole (aelobdog)
-// SPDX-License-Identifier: Apache-2.0
-
 #+feature dynamic-literals
 
 package main
@@ -75,10 +72,21 @@ Rotate :: struct {
 }
 
 State :: struct {
-    mode                 : Mode,
-    select               : Select,
-    rotate               : Rotate,
-    hovering_over_sphere : i32,
+    font                     : rl.Font,
+    mode                     : Mode,
+    select                   : Select,
+    rotate                   : Rotate,
+    hovering_over_sphere     : i32,
+    toolbar                  : toolbar,
+    poscar                   : Poscar,
+    bonds                    : Bonds,
+    lattice_normalized       : Lattice,
+    origin                   : rl.Vector3,
+    max_distance             : f32,
+    aspect_ratio             : f32,
+    camera_original_position : rl.Vector3,
+    camera                   : rl.Camera3D,
+
 
     // note: expand this?
     //   - add camera to remember last camara state?
@@ -98,29 +106,31 @@ ui_font_spacing :: 2
 ui_padding      :: 3
 eps             :: 1e-3
 
-init_state :: proc(font: rl.Font) -> State {
+toolbar_default_position :: rl.Vector2 {toolbar_padding, 100}
+
+init_state :: proc(state: ^State, font: rl.Font) {
+    state.font = font
     measure_text := rl.MeasureTextEx(font, "-0.000000", ui_font_size, ui_font_spacing)
-    return State {
-        mode = .NONE,
-        hovering_over_sphere = -1,
-        select = Select {
-            last_selected = -1,
-            curr_selected = -1,
-            xpos = 0,
-            ypos = 0,
-            zpos = 0,
-            font_size = ui_font_size,
-            ui_rect_1tb_w = 2 * ui_padding + i32(math.ceil(measure_text.x)),
-            ui_rect_1tb_h = i32(math.ceil(measure_text.y)),
-            ui_edit_mode = false,
-        },
-        rotate = Rotate {
-            pitch = 0,
-            yaw = 0,
-            roll = 0,
-            molecule_rotation = quaternion_from_xyzw(0, 0, 0, 1)
-        },
+    state.mode = .NONE
+    state.hovering_over_sphere = -1
+    state.select = Select {
+        last_selected = -1,
+        curr_selected = -1,
+        xpos = 0,
+        ypos = 0,
+        zpos = 0,
+        font_size = ui_font_size,
+        ui_rect_1tb_w = 2 * ui_padding + i32(math.ceil(measure_text.x)),
+        ui_rect_1tb_h = i32(math.ceil(measure_text.y)),
+        ui_edit_mode = false,
     }
+    state.rotate = Rotate {
+        pitch = 0,
+        yaw = 0,
+        roll = 0,
+        molecule_rotation = quaternion_from_xyzw(0, 0, 0, 1)
+    }
+    state.toolbar = toolbar_create(toolbar_default_position)
 }
 
 change_mode_to :: proc(state: ^State, mode: Mode) {
@@ -139,15 +149,6 @@ update_selection_to_hovering_over :: proc(state: ^State) {
 }
 
 main :: proc() {
-    poscar_filename := "test-files/Ge.vasp"
-    poscar, poscar_ok := poscar_parse(poscar_filename)
-    if !poscar_ok {
-        fmt.println("Could not parse {}", poscar_filename)
-    }
-    
-    // note(aelobdog): remove this later
-    _ = poscar_write("temp.vasp", poscar)
-
     rl.SetTraceLogLevel(.WARNING)
     context.logger = log.create_console_logger()
     rl.SetConfigFlags({ rl.ConfigFlag.WINDOW_RESIZABLE, rl.ConfigFlag.WINDOW_ALWAYS_RUN })
@@ -166,24 +167,28 @@ main :: proc() {
     defer rl.UnloadFont(font)
 
     // GUI Styling
-    rl.GuiSetFont(font)
-    rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
-    TB_BG_COLOR := i32(rl.ColorToInt(rl.ORANGE))
-    rl.GuiSetStyle(.DEFAULT, i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL), TB_BG_COLOR)
-    rl.GuiSetStyle(.DEFAULT, i32(rl.GuiControlProperty.BASE_COLOR_NORMAL), TB_BG_COLOR)
+    // rl.GuiSetFont(font)
+    // rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
+    // TB_BG_COLOR := i32(rl.ColorToInt(rl.ORANGE))
+    // rl.GuiSetStyle(.DEFAULT, i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL), TB_BG_COLOR)
+    // rl.GuiSetStyle(.DEFAULT, i32(rl.GuiControlProperty.BASE_COLOR_NORMAL), TB_BG_COLOR)
 
     rl.SetTargetFPS(60)
 
-    atoms, lattice, lattice_normalized,
-    bonds, origin, max_distance, aspect_ratio,
-    camera_original_position, camera, state := load_poscar_data_and_refresh(poscar, font)
+    state: State
+    poscar_filename := "test-files/Ge.vasp"
+    poscar_ok: bool
+    state.poscar, poscar_ok = poscar_parse(poscar_filename)
+    if !poscar_ok {
+        fmt.println("Could not parse {}", poscar_filename)
+    }
+
+    load_poscar_data_and_refresh(&state, state.poscar)
 
     for ! rl.WindowShouldClose() {
         if rl.IsFileDropped() {
             dropped_files := rl.LoadDroppedFiles()
             defer rl.UnloadDroppedFiles(dropped_files)
-
-            fmt.println("a file was dropped yo!")
 
             // note: we only take the last dropped file for now
             dropped_file := dropped_files.paths[dropped_files.count - 1]
@@ -196,13 +201,9 @@ main :: proc() {
                 fmt.println("WARNING: Unable to parse dropped file's data")
             }
             else {
-                if atoms != nil do delete(atoms)
-                    if bonds != nil do delete(bonds)
-
-                        atoms, lattice, lattice_normalized,
-                        bonds, origin, max_distance, aspect_ratio,
-                        camera_original_position, camera, state =
-                        load_poscar_data_and_refresh(poscar_dropped, font)
+                if state.poscar.atoms != nil do delete(state.poscar.atoms)
+                    if state.bonds != nil do delete(state.bonds)
+                        load_poscar_data_and_refresh(&state, poscar_dropped)
             }
         }
 
@@ -213,60 +214,62 @@ main :: proc() {
 
         ZOOM_SCALE :: 5.0
         zoom := rl.GetMouseWheelMove()
-        fovy := camera.fovy
+        fovy := state.camera.fovy
         fovy -= (zoom * ZOOM_SCALE)
         fovy = clamp(fovy, 1.0, 1000.0)
-        camera.fovy = rl.Lerp(camera.fovy, fovy, 0.15)
+        state.camera.fovy = rl.Lerp(state.camera.fovy, fovy, 0.15)
 
-        if rl.IsKeyPressed(.E) {
-            if state.mode == .SELECT {
-                state.select.last_selected = -1
-                state.select.curr_selected = -1
-                state.hovering_over_sphere = -1
-                change_mode_to(&state, .NONE)
-            }
-            else {
-                change_mode_to(&state, .SELECT)
-            }
-        }
+        /*
+           if rl.IsKeyPressed(.E) {
+           if state.mode == .SELECT {
+           state.select.last_selected = -1
+           state.select.curr_selected = -1
+           state.hovering_over_sphere = -1
+           change_mode_to(&state, .NONE)
+           }
+           else {
+           change_mode_to(&state, .SELECT)
+           }
+       }
 
-        if rl.IsKeyPressed(.R) {
-            if state.mode == .ROTATE {
-                state.mode = .NONE
-            }
-            else {
-                change_mode_to(&state, .ROTATE)
-            }
-        }
+       if rl.IsKeyPressed(.R) {
+       if state.mode == .ROTATE {
+       state.mode = .NONE
+       }
+       else {
+       change_mode_to(&state, .ROTATE)
+       }
+   }
 
-        // note(aelobdog): temporary
-        if rl.IsKeyPressed(.O) {
-            result := nfd.OpenDialogU8(&open_path, nil, 0, nil)
-            switch result {
-            case .Okay: {
-                fmt.println("Success!")
-                fmt.println(open_path)
-                nfd.FreePathU8(open_path)
-            }
-            case .Cancel: fmt.println("User pressed cancel.")
-            case .Error: fmt.println("Error:", nfd.GetError())
-            }
+   // note(aelobdog): temporary
+   if rl.IsKeyPressed(.O) {
+   result := nfd.OpenDialogU8(&open_path, nil, 0, nil)
+   switch result {
+   case .Okay: {
+   fmt.println("Success!")
+   fmt.println(open_path)
+   nfd.FreePathU8(open_path)
+   }
+   case .Cancel: fmt.println("User pressed cancel.")
+   case .Error: fmt.println("Error:", nfd.GetError())
+   }
         }
 
         // note(aelobdog): temporary
         if rl.IsKeyPressed(.S) {
-            result := nfd.SaveDialogU8(&save_path, nil, 0, nil, nil)
-            switch result {
-            case .Okay: {
-                fmt.println("Success!")
-                fmt.println(save_path)
-                _ = poscar_write(string(save_path), poscar)
-                nfd.FreePathU8(save_path)
-            }
-            case .Cancel: fmt.println("User pressed cancel.")
-            case .Error: fmt.println("Error:", nfd.GetError())
-            }
+        result := nfd.SaveDialogU8(&save_path, nil, 0, nil, nil)
+        switch result {
+        case .Okay: {
+        fmt.println("Success!")
+        fmt.println(save_path)
+        _ = poscar_write(string(save_path), poscar)
+        nfd.FreePathU8(save_path)
         }
+        case .Cancel: fmt.println("User pressed cancel.")
+        case .Error: fmt.println("Error:", nfd.GetError())
+        }
+    }
+    */
 
         rot_matrix := rl.QuaternionToMatrix(state.rotate.molecule_rotation)
 
@@ -276,8 +279,8 @@ main :: proc() {
                 if rl.IsMouseButtonDown(.LEFT) {
                     SENSITIVITY :: 0.005
                     delta := rl.GetMouseDelta()
-                    forward := rl.Vector3Normalize(camera.target - camera.position)
-                    right   := rl.Vector3Normalize(rl.Vector3CrossProduct(forward, camera.up))
+                    forward := rl.Vector3Normalize(state.camera.target - state.camera.position)
+                    right   := rl.Vector3Normalize(rl.Vector3CrossProduct(forward, state.camera.up))
                     up      := rl.Vector3Normalize(rl.Vector3CrossProduct(right, forward))
                     q_pitch := rl.QuaternionFromAxisAngle(right, -delta.y * SENSITIVITY)
                     q_yaw   := rl.QuaternionFromAxisAngle(up,    -delta.x * SENSITIVITY)
@@ -290,10 +293,10 @@ main :: proc() {
             {
                 state.hovering_over_sphere = -1
 
-                for i in 0..<len(atoms) {
-                    ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), camera)
-                    collision := rl.GetRayCollisionSphere(ray, atoms[i].position.xyz, f32(atoms[i].radius) * RADIUS_PCT)
-                    if collision.hit && !atoms[i].is_a_ghost{
+                for i in 0..<len(state.poscar.atoms) {
+                    ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), state.camera)
+                    collision := rl.GetRayCollisionSphere(ray, state.poscar.atoms[i].position.xyz, f32(state.poscar.atoms[i].radius) * RADIUS_PCT)
+                    if collision.hit && !state.poscar.atoms[i].is_a_ghost{
                         state.hovering_over_sphere = i32(i)
                     }
                 }
@@ -322,86 +325,72 @@ main :: proc() {
                 case .NONE: // do nothing
         }
 
-        offset := rl.Vector3Transform(camera_original_position, rot_matrix)
-        camera.position = origin + offset
-        camera.up = rl.Vector3Transform({0, 1, 0}, rot_matrix)
-        camera.target = origin
+        offset := rl.Vector3Transform(state.camera_original_position, rot_matrix)
+        state.camera.position = state.origin + offset
+        state.camera.up = rl.Vector3Transform({0, 1, 0}, rot_matrix)
+        state.camera.target = state.origin
 
         rl.BeginDrawing(); defer rl.EndDrawing()
 
         rl.ClearBackground(rl.GetColor(0x444444ff))
         rl.DrawFPS(10, 30);
 
-        rl.BeginMode3D(camera)
+        rl.BeginMode3D(state.camera)
 
-        draw_lattice(lattice)
+        draw_lattice(state.poscar.lattice)
 
-        draw_bonds(bonds, atoms[:])
+        draw_bonds(state.bonds, state.poscar.atoms[:])
 
-        draw_atoms(atoms[:])
+        draw_atoms(state.poscar.atoms[:])
 
         if state.hovering_over_sphere != -1 {
-            draw_highlighted_atom(state.hovering_over_sphere, atoms[:], rl.BLACK)
+            draw_highlighted_atom(state.hovering_over_sphere, state.poscar.atoms[:], rl.BLACK)
         }
 
         if state.select.curr_selected != -1 {
-            draw_highlighted_atom(state.select.curr_selected, atoms[:], rl.GREEN)
+            draw_highlighted_atom(state.select.curr_selected, state.poscar.atoms[:], rl.GREEN)
         }
 
         rl.EndMode3D()
 
-        draw_gizmo(lattice_normalized, state.rotate.molecule_rotation)
+        draw_gizmo(state.lattice_normalized, state.rotate.molecule_rotation)
 
-        draw_help(font, &state)
+        toolbar_draw(&state)
 
         if state.mode == .SELECT {
-            draw_edit_ui(font, &state, atoms[:], &bonds)
+            draw_edit_ui(font, &state, state.poscar.atoms[:], &state.bonds)
         }
     }
 }
 
-load_poscar_data_and_refresh :: proc(poscar: Poscar, font: rl.Font) ->
-(
- atoms: [dynamic]Atom,
- lattice: Lattice,
- lattice_normalized: Lattice,
- bonds: Bonds,
- origin: rl.Vector3,
- max_distance: f32,
- aspect_ratio: f32,
- camera_original_position: rl.Vector3,
- camera: rl.Camera3D,
- state: State,
-)
-{
-    atoms = poscar.atoms
-    lattice = poscar.lattice
-    lattice_normalized = Lattice {
-        rl.Vector3Normalize(lattice[0]),
-        rl.Vector3Normalize(lattice[1]),
-        rl.Vector3Normalize(lattice[2]),
+load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
+    state.poscar = poscar
+    state.lattice_normalized = Lattice {
+        rl.Vector3Normalize(state.poscar.lattice[0]),
+        rl.Vector3Normalize(state.poscar.lattice[1]),
+        rl.Vector3Normalize(state.poscar.lattice[2]),
     }
 
-    bonds = make(Bonds)
-    populate_bonds(&bonds, atoms[:])
-    origin = get_molecule_center(atoms[:])
-    max_distance = get_farthest_atom_from_center(atoms[:], origin)
-    aspect_ratio = f32(rl.GetScreenWidth()) / f32(rl.GetScreenHeight())
+    state.bonds = make(Bonds)
+    populate_bonds(&state.bonds, state.poscar.atoms[:])
+    state.origin = get_molecule_center(state.poscar.atoms[:])
+    state.max_distance = get_farthest_atom_from_center(state.poscar.atoms[:], state.origin)
+    state.aspect_ratio = f32(rl.GetScreenWidth()) / f32(rl.GetScreenHeight())
 
-    vertical_size   := 5 * max_distance
-    horizontal_size := 5 * max_distance
-    required_fovy_from_width := horizontal_size / aspect_ratio
+    vertical_size   := 5 * state.max_distance
+    horizontal_size := 5 * state.max_distance
+    required_fovy_from_width := horizontal_size / state.aspect_ratio
 
-    camera_original_position = rl.Vector3{0, 0, 5 * max_distance}
-    camera = rl.Camera3D {
-        position = origin + camera_original_position,
-        target = origin,
+    state.camera_original_position = rl.Vector3{0, 0, 5 * state.max_distance}
+    state.camera = rl.Camera3D {
+        position = state.origin + state.camera_original_position,
+        target = state.origin,
         up = rl.Vector3{0.0, 1.0, 0.0},
         fovy =  max(vertical_size, required_fovy_from_width),
         projection = rl.CameraProjection.ORTHOGRAPHIC,
     }
 
-    state = init_state(font)
+    init_state(state, state.font)
     return
 }
 
@@ -479,9 +468,7 @@ draw_help :: proc(font: rl.Font, state: ^State) {
 }
 
 draw_edit_ui :: proc(font: rl.Font, state: ^State, atoms: []Atom, bonds: ^Bonds) {
-    if state.select.curr_selected != -1 && 
-       state.select.curr_selected != state.select.last_selected
-    {
+    if state.select.curr_selected != -1 && state.select.curr_selected != state.select.last_selected {
         edit_atom_pos := atoms[state.select.curr_selected].position
         fmt.bprintf(state.select.xpos[:], "%.6f", edit_atom_pos.x)
         fmt.bprintf(state.select.ypos[:], "%.6f", edit_atom_pos.y)
@@ -489,9 +476,7 @@ draw_edit_ui :: proc(font: rl.Font, state: ^State, atoms: []Atom, bonds: ^Bonds)
         state.select.last_selected = state.select.curr_selected
     }
 
-    if state.select.curr_selected != -1 &&
-       state.select.curr_selected == state.select.last_selected
-    {
+    if state.select.curr_selected != -1 && state.select.curr_selected == state.select.last_selected {
         y1 := state.select.edit_ui_y
         height := state.select.ui_rect_1tb_h
         y2 := y1 + (ui_padding + height)
