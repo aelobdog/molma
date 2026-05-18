@@ -3,11 +3,11 @@
 
 package main
 
-import "vendor:commonmark"
 import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:strconv"
+import rl "vendor:raylib"
 
 Poscar :: struct {
     lattice: Lattice,
@@ -43,6 +43,8 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
     line_number += 1
 
     // scaling factor
+    // note(aelobdog): handle the case with 3 positive scaling factors
+    // note(aelobdog): handle the case with 1 negative scaling factor
     scaling_factor, ok = strconv.parse_f32(strings.trim_space(lines[line_number]))
     if !ok {
         return poscar, false
@@ -108,9 +110,6 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
     if first_letter == 'c' || first_letter == 'k' || first_letter == 'C' || first_letter == 'K' {
         coord_mode_cartesian = true
     }
-    else {
-        // note(aelobdog): process "Direct" later
-    }
     line_number += 1
 
     // atom positions
@@ -137,14 +136,37 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
             poscar.atoms[atom_it].radius = e.cov_radius_ang
             poscar.atoms[atom_it].symbol = e.symbol
             poscar.atoms[atom_it].is_a_ghost = false
-            poscar.atoms[atom_it].position.x, okx = strconv.parse_f32(values[0])
-            poscar.atoms[atom_it].position.y, oky = strconv.parse_f32(values[1])
-            poscar.atoms[atom_it].position.z, okz = strconv.parse_f32(values[2])
-            poscar.atoms[atom_it].position.w = 0.0
 
-            if ! (okx && oky && okz) {
-                return poscar, false
+            position: rl.Vector3
+            if (coord_mode_cartesian) {
+                position.x, okx = strconv.parse_f32(values[0])
+                position.y, oky = strconv.parse_f32(values[1])
+                position.z, okz = strconv.parse_f32(values[2])
+
+                if ! (okx && oky && okz) {
+                    return poscar, false
+                }
             }
+            else {
+                position.x, okx = strconv.parse_f32(values[0])
+                position.y, oky = strconv.parse_f32(values[1])
+                position.z, okz = strconv.parse_f32(values[2])
+
+                if ! (okx && oky && okz) {
+                    return poscar, false
+                }
+
+                cartesian_position := position.x * poscar.lattice[0] + 
+                                      position.y * poscar.lattice[1] +
+                                      position.z * poscar.lattice[2]
+
+                position = cartesian_position
+            }
+
+            poscar.atoms[atom_it].position.x = position.x
+            poscar.atoms[atom_it].position.y = position.y
+            poscar.atoms[atom_it].position.z = position.z
+            poscar.atoms[atom_it].position.w = 0.0
 
             atom_it += 1
         }

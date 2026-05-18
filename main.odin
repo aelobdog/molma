@@ -165,7 +165,6 @@ main :: proc() {
     state: State
     executable_dir := string(rl.GetApplicationDirectory())
     font_path := slashpath.join({executable_dir, "fonts", "JetBrainsMono-2.304", "JetBrainsMono-Regular.ttf"})
-    fmt.println(font_path)
     state.font = rl.LoadFont(strings.clone_to_cstring(font_path))
     defer rl.UnloadFont(state.font)
 
