@@ -88,7 +88,7 @@ State :: struct {
     aspect_ratio             : f32,
     camera_original_position : rl.Vector3,
     camera                   : rl.Camera3D,
-
+    window_size              : [2]i32,
 
     // note: expand this?
     //   - add camera to remember last camara state?
@@ -107,8 +107,6 @@ ui_font_size    :: 32
 ui_font_spacing :: 2
 ui_padding      :: 3
 eps             :: 1e-3
-
-toolbar_default_position :: rl.Vector2 {toolbar_padding, 100}
 
 init_state :: proc(state: ^State) {
     measure_text := rl.MeasureTextEx(state.font, "-0.000000", ui_font_size, ui_font_spacing)
@@ -131,7 +129,8 @@ init_state :: proc(state: ^State) {
         roll = 0,
         molecule_rotation = quaternion_from_xyzw(0, 0, 0, 1)
     }
-    state.toolbar = toolbar_create(toolbar_default_position)
+    state.window_size = [2]i32 { rl.GetScreenWidth(), rl.GetScreenHeight() }
+    state.toolbar = toolbar_create()
 }
 
 change_mode_to :: proc(state: ^State, mode: Mode) {
@@ -181,7 +180,19 @@ main :: proc() {
 
     load_poscar_data_and_refresh(&state, state.poscar)
 
+    // note(agodbole): custom shader stuff
+    unit_sphere_model := rl.LoadModelFromMesh(rl.GenMeshSphere(0.1, 32, 32))
+    defer rl.UnloadModel(unit_sphere_model)
+
+    atom_shader := rl.LoadShader("shaders/atom-vs.glsl", "shaders/atom-fs.glsl")
+    defer rl.UnloadShader(atom_shader)
+
+    unit_sphere_model.materials[0].shader = atom_shader
+
     for ! rl.WindowShouldClose() {
+        state.window_size.x = rl.GetScreenWidth()
+        state.window_size.y = rl.GetScreenHeight()
+
         if rl.IsFileDropped() {
             dropped_files := rl.LoadDroppedFiles()
             defer rl.UnloadDroppedFiles(dropped_files)
@@ -198,8 +209,8 @@ main :: proc() {
             }
             else {
                 if state.poscar.atoms != nil do delete(state.poscar.atoms)
-                    if state.bonds != nil do delete(state.bonds)
-                        load_poscar_data_and_refresh(&state, poscar_dropped)
+                if state.bonds != nil do delete(state.bonds)
+                load_poscar_data_and_refresh(&state, poscar_dropped)
             }
         }
 
@@ -285,7 +296,7 @@ main :: proc() {
 
         draw_bonds(state.bonds, state.poscar.atoms[:])
 
-        draw_atoms(state.poscar.atoms[:])
+        draw_atoms(state.poscar.atoms[:], unit_sphere_model)
 
         if state.hovering_over_sphere != -1 {
             draw_highlighted_atom(state.hovering_over_sphere, state.poscar.atoms[:], rl.BLACK)
@@ -299,7 +310,8 @@ main :: proc() {
 
         draw_gizmo(state.lattice_normalized, state.rotate.molecule_rotation)
 
-        toolbar_draw(&state)
+        toolbar_y := (f32(state.window_size.y) - state.toolbar.height) / 2.0
+        toolbar_draw(&state, toolbar_padding, toolbar_y)
 
         if state.mode == .SELECT {
             draw_edit_ui(&state)
@@ -375,11 +387,11 @@ draw_lattice :: proc(lattice: Lattice) {
     rl.DrawLine3D(_3, _4, rl.GREEN)
 }
 
-draw_atoms :: proc(atoms : []Atom) {
+draw_atoms :: proc(atoms : []Atom, model: rl.Model) {
     for i in 0..<len(atoms) {
         element_info := periodic_table[atoms[i].atomic_number]
         color := rl.YELLOW if atoms[i].is_a_ghost else rl.GetColor(element_info.color)
-        rl.DrawSphere(atoms[i].position.xyz, f32(atoms[i].radius) * RADIUS_PCT, color);
+        rl.DrawModel(model, atoms[i].position.xyz, 10 * f32(atoms[i].radius) * RADIUS_PCT, color)
     }
 }
 

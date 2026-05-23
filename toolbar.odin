@@ -21,7 +21,6 @@ toolbar_item :: struct {
 }
 
 toolbar :: struct {
-    pos           : rl.Vector2,
     width         : f32,
     height        : f32,
     padding       : f32,
@@ -31,13 +30,12 @@ toolbar :: struct {
     button_states : [MAX_BUTTON_STATES]bool,
 }
 
-toolbar_padding  :: 2.0
+toolbar_padding  :: 2
 toolbar_item_dim :: 32
 toolbar_width    :: 2 * toolbar_padding + toolbar_item_dim
 
-toolbar_create :: proc(pos : rl.Vector2) -> toolbar {
+toolbar_create :: proc() -> toolbar {
     tb := toolbar {
-        pos = pos,
         width = toolbar_width,
         padding = toolbar_padding,
         columns = 1,
@@ -61,20 +59,22 @@ toolbar_create :: proc(pos : rl.Vector2) -> toolbar {
     return tb
 }
 
-toolbar_draw :: proc(state: ^State) {
+toolbar_draw :: proc(state: ^State, x, y: f32) {
+
     rl.DrawRectangle(
-        i32(state.toolbar.pos.x),
-        i32(state.toolbar.pos.y),
+        i32(x),
+        i32(y),
         i32(state.toolbar.width),
         i32(state.toolbar.height),
         rl.Color{0, 0, 0, 100},
     )
 
     for item, index in state.toolbar.items {
-        offset := index * (2 * toolbar_padding + toolbar_item_dim)
+        offset := i32(index * (2 * toolbar_padding + toolbar_item_dim))
+
         rect := rl.Rectangle {
-            state.toolbar.pos.x + toolbar_padding,
-            state.toolbar.pos.y + toolbar_padding + f32(offset),
+            f32(x + toolbar_padding),
+            y + f32(toolbar_padding + offset),
             toolbar_item_dim,
             toolbar_item_dim,
         }
