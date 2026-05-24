@@ -7,6 +7,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:strconv"
+import "core:slice"
 import rl "vendor:raylib"
 
 Poscar :: struct {
@@ -180,6 +181,12 @@ is_ascii_char :: proc(ch : byte) -> bool {
     return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')
 }
 
+// note(aelobdog): I'm not sure this is the best way to do what I want to do here.
+atom_map_value :: struct {
+    symbol : string,
+    count  : int,
+}
+
 poscar_write :: proc(filename: string, poscar: Poscar) -> bool {
     output_sb := strings.builder_make()
 
@@ -200,32 +207,49 @@ poscar_write :: proc(filename: string, poscar: Poscar) -> bool {
         strings.write_byte(&output_sb, '\n')
     }
 
-    species := make(map[string]int)
+    slice.sort_by(atoms[:], proc(a, b: Atom) -> bool {
+        return a.symbol < b.symbol
+    })
+
+    atom_map := make([dynamic]atom_map_value)
     for atom in atoms {
-        if atom.symbol in species {
-            species[atom.symbol] += 1
+        idx := -1
+        for entry, index in atom_map {
+            if atom.symbol == entry.symbol {
+                idx = index
+                break
+            }
+        }
+
+        if idx == -1 {
+            append(&atom_map, atom_map_value{ symbol = atom.symbol, count = 1 })
         }
         else {
-            species[atom.symbol] = 1
+            atom_map[idx].count += 1
         }
     }
 
-    for s, _ in species {
-        strings.write_string(&output_sb, s)
+    // note(aelobdog): possible optimization here would be to write to 2 different
+    //                 string builders in one iteration, and then writing them one
+    //                 by one in the right order.
+
+    for entry in atom_map {
+        strings.write_string(&output_sb, entry.symbol)
         strings.write_byte(&output_sb, '\t') 
     }
     strings.write_byte(&output_sb, '\n')
 
-    for _, c in species {
-        strings.write_int(&output_sb, c)
+    for entry in atom_map {
+        strings.write_int(&output_sb, entry.count)
         strings.write_byte(&output_sb, '\t') 
     }
     strings.write_byte(&output_sb, '\n')
+
     strings.write_string(&output_sb, "Cartesian")
     strings.write_byte(&output_sb, '\n')
 
     for atom in atoms {
-        for component in atom.position {
+        for component in atom.position.xyz {
             strings.write_f32(&output_sb, component, 'f')
             strings.write_byte(&output_sb, ' ')
         }
