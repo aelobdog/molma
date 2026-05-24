@@ -191,10 +191,14 @@ main :: proc() {
 	unit_sphere_model := rl.LoadModelFromMesh(rl.GenMeshSphere(0.1, 32, 32))
 	defer rl.UnloadModel(unit_sphere_model)
 
+	unit_cylinder_model := rl.LoadModelFromMesh(rl.GenMeshCylinder(1, 1, 32))
+	defer rl.UnloadModel(unit_sphere_model)
+
 	atom_shader := rl.LoadShader("shaders/atom-vs.glsl", "shaders/atom-fs.glsl")
 	defer rl.UnloadShader(atom_shader)
 
 	unit_sphere_model.materials[0].shader = atom_shader
+	unit_cylinder_model.materials[0].shader = atom_shader
 
 	for !rl.WindowShouldClose() {
 		state.window_size.x = rl.GetScreenWidth()
@@ -308,14 +312,14 @@ main :: proc() {
 					}
 				}
 
-                if rl.IsMouseButtonPressed(.LEFT) {
-                    if state.potentially_delete_sphere != -1 {
-                        ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
-                        state.potentially_delete_sphere = -1
+				if rl.IsMouseButtonPressed(.LEFT) {
+					if state.potentially_delete_sphere != -1 {
+						ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
+						state.potentially_delete_sphere = -1
 
-                        populate_bonds(&state.bonds, state.poscar.atoms[:])
-                    }
-                }
+						populate_bonds(&state.bonds, state.poscar.atoms[:])
+					}
+				}
 			}
 		case .NONE: // do nothing
 		}
@@ -334,7 +338,7 @@ main :: proc() {
 
 		draw_lattice(state.poscar.lattice)
 
-		draw_bonds(state.bonds, state.poscar.atoms[:])
+		draw_bonds(state.bonds, state.poscar.atoms[:], unit_cylinder_model)
 
 		draw_atoms(state.poscar.atoms[:], unit_sphere_model)
 
@@ -346,12 +350,15 @@ main :: proc() {
 			if state.select.curr_selected != -1 {
 				draw_highlighted_atom(state.select.curr_selected, state.poscar.atoms[:], rl.GREEN)
 			}
-		}
-        else if state.mode == .DELETE {
+		} else if state.mode == .DELETE {
 			if state.potentially_delete_sphere != -1 {
-				draw_highlighted_atom(state.potentially_delete_sphere, state.poscar.atoms[:], rl.RED)
+				draw_highlighted_atom(
+					state.potentially_delete_sphere,
+					state.poscar.atoms[:],
+					rl.RED,
+				)
 			}
-        }
+		}
 
 		rl.EndMode3D()
 
@@ -397,19 +404,34 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 	return
 }
 
-draw_bonds :: proc(bonds: Bonds, atoms: []Atom) {
+draw_bonds :: proc(bonds: Bonds, atoms: []Atom, model: rl.Model) {
 	for k, v in bonds {
 		for bond_data in v {
 			target := bond_data.destination
-			rad := min(atoms[k].radius, atoms[target].radius) * RADIUS_PCT * BOND_RADIUS_PCT
-			rl.DrawCylinderEx(
-				atoms[k].position.xyz,
-				atoms[target].position.xyz,
-				rad,
-				rad,
-				20,
-				rl.RAYWHITE,
-			)
+
+			p1 := atoms[k].position.xyz
+			p2 := atoms[target].position.xyz
+
+			delta := p2 - p1
+			distance := rl.Vector3Distance(p2, p1)
+			dir := delta / distance
+
+			up := rl.Vector3{0, 1, 0}
+			axis := rl.Vector3{1, 0, 0}
+			angle: f32 = 0.0
+			dot_prod := rl.Vector3DotProduct(up, dir)
+
+			if dot_prod > 0.9999 {
+				angle = 0.0
+			} else if dot_prod < -0.9999 {
+				angle = 180.0
+			} else {
+                axis = rl.Vector3Normalize(rl.Vector3CrossProduct(up, dir))
+				angle = math.acos(dot_prod) * (180.0 / math.PI)
+			}
+            rad := f32(0.1)
+			scale := rl.Vector3{rad, distance, rad}
+			rl.DrawModelEx(model, p1, axis, angle, scale, rl.LIGHTGRAY)
 		}
 	}
 }
