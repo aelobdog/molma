@@ -57,10 +57,11 @@ Select :: struct {
     xpos          : [32]u8,
     ypos          : [32]u8,
     zpos          : [32]u8,
+    atom_symbol   : [3]u8,
     font_size     : i32,
     ui_rect_1tb_w : i32,
     ui_rect_1tb_h : i32,
-    ui_edit_mode  : [3]bool,
+    ui_edit_mode  : [4]bool,
     edit_ui_x     : i32,
     edit_ui_y     : i32,
 }
@@ -265,7 +266,7 @@ main :: proc() {
                                 f32(state.select.edit_ui_x),
                                 f32(state.select.edit_ui_y),
                                 f32(ui_padding + state.select.ui_rect_1tb_w),
-                                f32(3 * (ui_padding + state.select.ui_rect_1tb_h)),
+                                f32(len(state.select.ui_edit_mode) * (ui_padding + state.select.ui_rect_1tb_h)),
                             }
 
                             if !rl.CheckCollisionPointRec(mouse_position, ui_box_rect) {
@@ -417,18 +418,21 @@ draw_gizmo :: proc(lattice: Lattice, rotation_quaternion: rl.Quaternion) {
     }
 }
 
-draw_help :: proc(font: rl.Font, state: ^State) {
-    // rl.GuiCheckBox(rl.Rectangle {0, 0, 10, 10}, "Edit", &(state.select.ui_is_select));
-    rl.DrawTextEx(font, "E: edit"  , {10, 50}, 32.0, 2.0, rl.ORANGE)
-    rl.DrawTextEx(font, "R: rotate", {10, 70}, 32.0, 2.0, rl.ORANGE)
-}
-
 draw_edit_ui :: proc(state: ^State) {
     if state.select.curr_selected != -1 && state.select.curr_selected != state.select.last_selected {
-        edit_atom_pos := state.poscar.atoms[state.select.curr_selected].position
-        fmt.bprintf(state.select.xpos[:], "%.6f", edit_atom_pos.x)
-        fmt.bprintf(state.select.ypos[:], "%.6f", edit_atom_pos.y)
-        fmt.bprintf(state.select.zpos[:], "%.6f", edit_atom_pos.z)
+        edit_atom := state.poscar.atoms[state.select.curr_selected]
+        edit_atom_pos := edit_atom.position
+
+        state.select.xpos        = 0
+        state.select.ypos        = 0
+        state.select.zpos        = 0
+        state.select.atom_symbol = 0
+
+        fmt.bprintf(state.select.xpos[:],        "%.6f", edit_atom_pos.x)
+        fmt.bprintf(state.select.ypos[:],        "%.6f", edit_atom_pos.y)
+        fmt.bprintf(state.select.zpos[:],        "%.6f", edit_atom_pos.z)
+        fmt.bprintf(state.select.atom_symbol[:], "%s",   edit_atom.symbol)
+
         state.select.last_selected = state.select.curr_selected
     }
 
@@ -437,6 +441,7 @@ draw_edit_ui :: proc(state: ^State) {
         height := state.select.ui_rect_1tb_h
         y2 := y1 + (ui_padding + height)
         y3 := y2 + (ui_padding + height)
+        y4 := y3 + (ui_padding + height)
 
         tb1 := rl.GuiTextBox(
             rl.Rectangle {
@@ -471,6 +476,17 @@ draw_edit_ui :: proc(state: ^State) {
             32, state.select.ui_edit_mode[2],
         ) 
 
+        tb4 := rl.GuiTextBox(
+            rl.Rectangle {
+                f32(state.select.edit_ui_x),
+                f32(y4),
+                f32(state.select.ui_rect_1tb_w),
+                f32(state.select.ui_rect_1tb_h),
+            },
+            cstring(&state.select.atom_symbol[0]),
+            32, state.select.ui_edit_mode[3],
+        ) 
+
         // reconcile data between string position and real position
         selected_atom := &state.poscar.atoms[state.select.curr_selected]
         if tb1 {
@@ -498,6 +514,20 @@ draw_edit_ui :: proc(state: ^State) {
                     selected_atom.position.z = value 
                     populate_bonds(&(state.bonds), state.poscar.atoms[:])
                 }
+            }
+        }
+        if tb4 {
+            state.select.ui_edit_mode[3] = !state.select.ui_edit_mode[3]
+
+            symbol := strings.to_lower(string(cstring(&state.select.atom_symbol[0])))
+            if is_a_valid_symbol(symbol) && symbol != selected_atom.symbol {
+                element, atomic_number := periodic_table_lookup_by_symbol(symbol)
+                selected_atom.symbol = element.symbol
+                selected_atom.atomic_number = atomic_number
+                selected_atom.is_a_ghost = false
+                selected_atom.radius = element.cov_radius_ang
+                
+                populate_bonds(&(state.bonds), state.poscar.atoms[:])
             }
         }
     }

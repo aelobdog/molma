@@ -75,7 +75,7 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
         defer delete(symbols)
 
         for symbol in symbols {
-            append(&species, Species { symbol = symbol })
+            append(&species, Species { symbol = strings.to_lower(symbol) })
         }
         line_number += 1
     }
