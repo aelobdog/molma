@@ -31,7 +31,7 @@ is_a_valid_symbol :: proc(symbol: string) -> bool {
 }
 
 periodic_table := [119]Element {
-    {0.00, 0.00, u32(0x00000000), "x", "Unknown"},
+    {1.00, 1.00, u32(0x000000FF), "x", "Unknown"},
     {1.20, 0.31, u32(0xFFFFFFFF), "h", "Hydrogen"},
     {1.40, 0.28, u32(0xD9FFFFFF), "he", "Helium"},
     {1.82, 1.28, u32(0xCC80FFFF), "li", "Lithium"},
