@@ -164,6 +164,7 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 						case .Cancel: // note(aelobdog): handle with UI message
 						case .Error: // note(aelobdog): handle with UI message
 						}
+                        populate_bonds(&state.bonds, state.poscar.atoms[:])
 					}
 				case .FileOpen:
 					{
