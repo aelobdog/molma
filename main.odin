@@ -194,7 +194,9 @@ main :: proc() {
 	unit_cylinder_model := rl.LoadModelFromMesh(rl.GenMeshCylinder(1, 1, 32))
 	defer rl.UnloadModel(unit_sphere_model)
 
-	atom_shader := rl.LoadShader("shaders/atom-vs.glsl", "shaders/atom-fs.glsl")
+    vs := cstring(#load("shaders/atom-vs.glsl"))
+    fs := cstring(#load("shaders/atom-fs.glsl"))
+    atom_shader := rl.LoadShaderFromMemory(vs, fs)
 	defer rl.UnloadShader(atom_shader)
 
 	unit_sphere_model.materials[0].shader = atom_shader
