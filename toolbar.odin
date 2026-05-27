@@ -15,12 +15,13 @@ highlight_color :: rl.Color{215, 124, 46, 150}
 //                 REFACTOR THIS !
 
 toolbar_button_states :: enum i8 {
-	ButtonAdd    = -3,
-	FileOpen     = -2,
-	FileSave     = -1,
-	ButtonRotate = 0,
-	ButtonSelect = 1,
-	ButtonDelete = 3,
+	ButtonAdd         = -3,
+	FileOpen          = -2,
+	FileSave          = -1,
+	ButtonRotate      = 0,
+	ButtonSelect      = 1,
+	ButtonDelete      = 3,
+	ButtonRenderBonds = 4,
 }
 
 toolbar_item :: struct {
@@ -30,13 +31,12 @@ toolbar_item :: struct {
 }
 
 toolbar :: struct {
-	width:         f32,
-	height:        f32,
-	padding:       f32,
-	columns:       i32,
-	item_dim:      f32,
-	items:         [dynamic]toolbar_item,
-	button_states: [MAX_BUTTON_STATES]bool,
+	width:    f32,
+	height:   f32,
+	padding:  f32,
+	columns:  i32,
+	item_dim: f32,
+	items:    [dynamic]toolbar_item,
 }
 
 toolbar_padding :: 2
@@ -45,12 +45,11 @@ toolbar_width :: 2 * toolbar_padding + toolbar_item_dim
 
 toolbar_create :: proc() -> toolbar {
 	tb := toolbar {
-		width         = toolbar_width,
-		padding       = toolbar_padding,
-		columns       = 1,
-		item_dim      = toolbar_item_dim,
-		items         = make([dynamic]toolbar_item),
-		button_states = false,
+		width    = toolbar_width,
+		padding  = toolbar_padding,
+		columns  = 1,
+		item_dim = toolbar_item_dim,
+		items    = make([dynamic]toolbar_item),
 	}
 	append(
 		&(tb.items),
@@ -76,12 +75,19 @@ toolbar_create :: proc() -> toolbar {
 		&(tb.items),
 		toolbar_item{is_stateful = true, id = .ButtonDelete, icon_name = .ICON_CROSS},
 	)
+	append(
+		&(tb.items),
+		toolbar_item {
+			is_stateful = true,
+			id = .ButtonRenderBonds,
+			icon_name = .ICON_TARGET_MOVE_FILL,
+		},
+	)
 	tb.height = f32(len(tb.items) * (2 * toolbar_padding + toolbar_item_dim))
 	return tb
 }
 
 toolbar_draw :: proc(state: ^State, x, y: f32) {
-
 	rl.DrawRectangle(
 		i32(x),
 		i32(y),
@@ -105,35 +111,39 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 				switch item.id {
 				case .ButtonRotate:
 					{
-						if state.toolbar.button_states[item.id] == true {
-							state.toolbar.button_states[item.id] = false
+						if state.button_states[item.id] == true {
+							state.button_states[item.id] = false
 							change_mode_to(state, .NONE)
 						} else {
-							state.toolbar.button_states[item.id] = true
+							state.button_states[item.id] = true
 							change_mode_to(state, .ROTATE)
 						}
 					}
 				case .ButtonSelect:
 					{
-						if state.toolbar.button_states[item.id] == true {
-							state.toolbar.button_states[item.id] = false
+						if state.button_states[item.id] == true {
+							state.button_states[item.id] = false
 							state.select.last_selected = -1
 							state.select.curr_selected = -1
 							state.hovering_over_sphere = -1
 							change_mode_to(state, .NONE)
 						} else {
-							state.toolbar.button_states[item.id] = true
+							state.button_states[item.id] = true
 							change_mode_to(state, .SELECT)
 						}
 					}
 				case .ButtonAdd: // do nothing
+				case .ButtonRenderBonds:
+                    {
+                        state.button_states[item.id] = !state.button_states[item.id] 
+                    }
 				case .ButtonDelete:
 					{
-						if state.toolbar.button_states[item.id] == true {
-							state.toolbar.button_states[item.id] = false
+						if state.button_states[item.id] == true {
+							state.button_states[item.id] = false
 							change_mode_to(state, .NONE)
 						} else {
-							state.toolbar.button_states[item.id] = true
+							state.button_states[item.id] = true
 							change_mode_to(state, .DELETE)
 						}
 					}
@@ -145,7 +155,7 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 			// note(aelobdog): not sure how to correctly highlight a button if
 			// its state is "active", so I'm defaulting to just drawing a semi-
 			// tranparent overlay on top of the button
-			if state.toolbar.button_states[item.id] == true {
+			if state.button_states[item.id] == true {
 				rl.DrawRectangleRec(rect, highlight_color)
 			}
 		} else {
@@ -164,7 +174,7 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 						case .Cancel: // note(aelobdog): handle with UI message
 						case .Error: // note(aelobdog): handle with UI message
 						}
-                        populate_bonds(&state.bonds, state.poscar.atoms[:])
+						populate_bonds(&state.bonds, state.poscar.atoms[:])
 					}
 				case .FileOpen:
 					{
@@ -200,13 +210,13 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 								radius = unknown_element.cov_radius_ang,
 								symbol = unknown_element.symbol,
 								position = {-5, -5, -5, 1.0},
-								is_a_ghost = false,
 							},
 						)
 					}
 				case .ButtonDelete: // do nothing
 				case .ButtonRotate: // do nothing
 				case .ButtonSelect: // do nothing
+				case .ButtonRenderBonds: // do nothing
 				}
 			}
 		}

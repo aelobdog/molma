@@ -17,7 +17,6 @@ Atom :: struct {
 	radius:        f32,
 	symbol:        string,
 	position:      rl.Vector4,
-	is_a_ghost:    bool,
 }
 
 BondData :: struct {
@@ -71,7 +70,6 @@ Rotate :: struct {
 	yaw:               f32,
 	roll:              f32,
 	molecule_rotation: rl.Quaternion,
-	ui_is_rotate:      bool,
 }
 
 State :: struct {
@@ -91,9 +89,7 @@ State :: struct {
 	camera_original_position:  rl.Vector3,
 	camera:                    rl.Camera3D,
 	window_size:               [2]i32,
-
-	// note: expand this?
-	//   - add camera to remember last camara state?
+	button_states:             [MAX_BUTTON_STATES]bool,
 }
 
 quaternion_from_xyzw :: proc(x, y, z, w: f32) -> rl.Quaternion {
@@ -134,6 +130,7 @@ init_state :: proc(state: ^State) {
 	}
 	state.window_size = [2]i32{rl.GetScreenWidth(), rl.GetScreenHeight()}
 	state.toolbar = toolbar_create()
+	state.button_states = false
 }
 
 change_mode_to :: proc(state: ^State, mode: Mode) {
@@ -174,29 +171,22 @@ main :: proc() {
 	state.font = rl.LoadFont(strings.clone_to_cstring(font_path))
 	defer rl.UnloadFont(state.font)
 
+	init_state(&state)
+
 	rl.GuiSetFont(state.font)
 	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
 	rl.SetTargetFPS(60)
-
-	poscar_filename := "test-files/Ge.vasp"
-	poscar_ok: bool
-	state.poscar, poscar_ok = poscar_parse(poscar_filename)
-	if !poscar_ok {
-		fmt.println("Could not parse {}", poscar_filename)
-	}
-
-	load_poscar_data_and_refresh(&state, state.poscar)
 
 	// note(agodbole): custom shader stuff
 	unit_sphere_model := rl.LoadModelFromMesh(rl.GenMeshSphere(0.1, 32, 32))
 	defer rl.UnloadModel(unit_sphere_model)
 
 	unit_cylinder_model := rl.LoadModelFromMesh(rl.GenMeshCylinder(1, 1, 32))
-	defer rl.UnloadModel(unit_sphere_model)
+	defer rl.UnloadModel(unit_cylinder_model)
 
-    vs := cstring(#load("shaders/atom-vs.glsl"))
-    fs := cstring(#load("shaders/atom-fs.glsl"))
-    atom_shader := rl.LoadShaderFromMemory(vs, fs)
+	vs := cstring(#load("shaders/atom-vs.glsl"))
+	fs := cstring(#load("shaders/atom-fs.glsl"))
+	atom_shader := rl.LoadShaderFromMemory(vs, fs)
 	defer rl.UnloadShader(atom_shader)
 
 	unit_sphere_model.materials[0].shader = atom_shader
@@ -210,7 +200,7 @@ main :: proc() {
 			dropped_files := rl.LoadDroppedFiles()
 			defer rl.UnloadDroppedFiles(dropped_files)
 
-			// note: we only take the last dropped file for now
+			// note(aelobdog): we only take the last dropped file for now
 			dropped_file := dropped_files.paths[dropped_files.count - 1]
 
 			fmt.println(dropped_file)
@@ -270,7 +260,7 @@ main :: proc() {
 						state.poscar.atoms[i].position.xyz,
 						f32(state.poscar.atoms[i].radius) * RADIUS_PCT,
 					)
-					if collision.hit && !state.poscar.atoms[i].is_a_ghost {
+					if collision.hit {
 						state.hovering_over_sphere = i32(i)
 					}
 				}
@@ -309,13 +299,14 @@ main :: proc() {
 						state.poscar.atoms[i].position.xyz,
 						f32(state.poscar.atoms[i].radius) * RADIUS_PCT,
 					)
-					if collision.hit && !state.poscar.atoms[i].is_a_ghost {
+					if collision.hit {
 						state.potentially_delete_sphere = i32(i)
 					}
 				}
 
 				if rl.IsMouseButtonPressed(.LEFT) {
 					if state.potentially_delete_sphere != -1 {
+						// note(aelobdog): 'ordered_remove' should retain the sorted-ness of the atoms
 						ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
 						state.potentially_delete_sphere = -1
 
@@ -340,9 +331,13 @@ main :: proc() {
 
 		draw_lattice(state.poscar.lattice)
 
-		draw_bonds(state.bonds, state.poscar.atoms[:], unit_cylinder_model)
+		if state.button_states[toolbar_button_states.ButtonRenderBonds] {
+			draw_bonds(state.bonds, state.poscar.atoms[:], unit_cylinder_model)
+		}
 
-		draw_atoms(state.poscar.atoms[:], unit_sphere_model)
+		if len(state.poscar.atoms) > 0 {
+			draw_atoms(state.poscar.atoms[:], unit_sphere_model)
+		}
 
 		if state.mode == .SELECT {
 			if state.hovering_over_sphere != -1 {
@@ -372,6 +367,8 @@ main :: proc() {
 		if state.mode == .SELECT {
 			draw_edit_ui(&state)
 		}
+
+        free_all(context.temp_allocator)
 	}
 }
 
@@ -428,10 +425,10 @@ draw_bonds :: proc(bonds: Bonds, atoms: []Atom, model: rl.Model) {
 			} else if dot_prod < -0.9999 {
 				angle = 180.0
 			} else {
-                axis = rl.Vector3Normalize(rl.Vector3CrossProduct(up, dir))
+				axis = rl.Vector3Normalize(rl.Vector3CrossProduct(up, dir))
 				angle = math.acos(dot_prod) * (180.0 / math.PI)
 			}
-            rad := f32(0.1)
+			rad := f32(0.1)
 			scale := rl.Vector3{rad, distance, rad}
 			rl.DrawModelEx(model, p1, axis, angle, scale, rl.LIGHTGRAY)
 		}
@@ -468,7 +465,7 @@ draw_lattice :: proc(lattice: Lattice) {
 draw_atoms :: proc(atoms: []Atom, model: rl.Model) {
 	for i in 0 ..< len(atoms) {
 		element_info := periodic_table[atoms[i].atomic_number]
-		color := rl.YELLOW if atoms[i].is_a_ghost else rl.GetColor(element_info.color)
+		color := rl.GetColor(element_info.color)
 		rl.DrawModel(model, atoms[i].position.xyz, 10 * f32(atoms[i].radius) * RADIUS_PCT, color)
 	}
 }
@@ -606,7 +603,6 @@ draw_edit_ui :: proc(state: ^State) {
 				element, atomic_number := periodic_table_lookup_by_symbol(symbol)
 				selected_atom.symbol = element.symbol
 				selected_atom.atomic_number = atomic_number
-				selected_atom.is_a_ghost = false
 				selected_atom.radius = element.cov_radius_ang
 
 				populate_bonds(&(state.bonds), state.poscar.atoms[:])

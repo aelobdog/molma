@@ -136,7 +136,6 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
             poscar.atoms[atom_it].atomic_number = atomic_number
             poscar.atoms[atom_it].radius = e.cov_radius_ang
             poscar.atoms[atom_it].symbol = e.symbol
-            poscar.atoms[atom_it].is_a_ghost = false
 
             position: rl.Vector3
             if (coord_mode_cartesian) {
@@ -174,6 +173,9 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
         line_number += s.count
     }
 
+    slice.sort_by(poscar.atoms[:], proc(a, b: Atom) -> bool {
+        return a.symbol < b.symbol
+    })
     return poscar, true
 }
 
@@ -207,9 +209,10 @@ poscar_write :: proc(filename: string, poscar: Poscar) -> bool {
         strings.write_byte(&output_sb, '\n')
     }
 
-    slice.sort_by(atoms[:], proc(a, b: Atom) -> bool {
-        return a.symbol < b.symbol
-    })
+    // note(aelobdog): this is now done by default when parsing the poscar
+    // slice.sort_by(atoms[:], proc(a, b: Atom) -> bool {
+    //     return a.symbol < b.symbol
+    // })
 
     atom_map := make([dynamic]atom_map_value)
     for atom in atoms {
