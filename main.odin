@@ -90,6 +90,7 @@ State :: struct {
 	camera:                    rl.Camera3D,
 	window_size:               [2]i32,
 	button_states:             [MAX_BUTTON_STATES]bool,
+	unique_atom_locations:     [dynamic]i32,
 }
 
 quaternion_from_xyzw :: proc(x, y, z, w: f32) -> rl.Quaternion {
@@ -193,6 +194,8 @@ main :: proc() {
 	unit_cylinder_model.materials[0].shader = atom_shader
 
 	for !rl.WindowShouldClose() {
+		// fmt.println(state.unique_atom_locations[:])
+
 		state.window_size.x = rl.GetScreenWidth()
 		state.window_size.y = rl.GetScreenHeight()
 
@@ -306,8 +309,45 @@ main :: proc() {
 
 				if rl.IsMouseButtonPressed(.LEFT) {
 					if state.potentially_delete_sphere != -1 {
+
+						fmt.println(state.unique_atom_locations[:])
+
+						start := 0
+						for i in 0 ..< len(state.unique_atom_locations) {
+							if state.poscar.atoms[i].atomic_number ==
+							   state.poscar.atoms[state.potentially_delete_sphere].atomic_number {
+								start = i
+								break
+							}
+						}
+
+						next := i32(0)
+
+						if start == len(state.unique_atom_locations) - 1 {
+							next = i32(len(state.poscar.atoms))
+						} else {
+							next = state.unique_atom_locations[start + 1]
+						}
+
+						fmt.println("start", start)
+						fmt.println("next", next)
+						count := next - state.unique_atom_locations[start]
+						fmt.println("count", count)
+
+                        for i in start + 1 ..< len(state.unique_atom_locations) {
+                            fmt.println(i)
+                            state.unique_atom_locations[i] -= 1
+                        }
+
+						if count == 1 {
+							ordered_remove(&(state.unique_atom_locations), start)
+						}
+
+						fmt.println(state.unique_atom_locations[:])
+
 						// note(aelobdog): 'ordered_remove' should retain the sorted-ness of the atoms
 						ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
+
 						state.potentially_delete_sphere = -1
 
 						populate_bonds(&state.bonds, state.poscar.atoms[:])
@@ -368,7 +408,27 @@ main :: proc() {
 			draw_edit_ui(&state)
 		}
 
-        free_all(context.temp_allocator)
+		free_all(context.temp_allocator)
+	}
+}
+
+initialize_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, poscar: Poscar) {
+	// note(aelobdog): since the atoms array from the poscar file is always maintained in a sorted state
+	//                 all we have to do is detect where the atom changes, and add it to the list of
+	//                 unique atoms.
+
+	if len(poscar.atoms) < 0 {
+		return
+	}
+
+	last_added_atoms_atomic_number := poscar.atoms[0].atomic_number
+	append(unique_atoms_locations, 0)
+
+	for i in 1 ..< len(poscar.atoms) {
+		if last_added_atoms_atomic_number != poscar.atoms[i].atomic_number {
+			append(unique_atoms_locations, i32(i))
+			last_added_atoms_atomic_number = poscar.atoms[i].atomic_number
+		}
 	}
 }
 
@@ -400,6 +460,10 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 	}
 
 	init_state(state)
+	if state.unique_atom_locations != nil {
+		clear(&(state.unique_atom_locations))
+	}
+	initialize_unique_atom_locations(&(state.unique_atom_locations), state.poscar)
 	return
 }
 
