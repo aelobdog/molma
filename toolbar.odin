@@ -134,9 +134,9 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 					}
 				case .ButtonAdd: // do nothing
 				case .ButtonRenderBonds:
-                    {
-                        state.button_states[item.id] = !state.button_states[item.id] 
-                    }
+					{
+						state.button_states[item.id] = !state.button_states[item.id]
+					}
 				case .ButtonDelete:
 					{
 						if state.button_states[item.id] == true {
@@ -150,13 +150,6 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 				case .FileOpen: // do nothing
 				case .FileSave: // do nothing
 				}
-			}
-
-			// note(aelobdog): not sure how to correctly highlight a button if
-			// its state is "active", so I'm defaulting to just drawing a semi-
-			// tranparent overlay on top of the button
-			if state.button_states[item.id] == true {
-				rl.DrawRectangleRec(rect, highlight_color)
 			}
 		} else {
 			if rl.GuiButton(rect, rl.GuiIconText(item.icon_name, "")) {
@@ -221,4 +214,23 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 			}
 		}
 	}
+
+	for item, index in state.toolbar.items {
+		if item.is_stateful {
+			offset := i32(index * (2 * toolbar_padding + toolbar_item_dim))
+			rect := rl.Rectangle {
+				f32(x + toolbar_padding),
+				y + f32(toolbar_padding + offset),
+				toolbar_item_dim,
+				toolbar_item_dim,
+			}
+			// note(aelobdog): not sure how to correctly highlight a button if
+			// its state is "active", so I'm defaulting to just drawing a semi-
+			// tranparent overlay on top of the button
+			if state.button_states[item.id] == true {
+				rl.DrawRectangleRec(rect, highlight_color)
+			}
+		}
+	}
+
 }

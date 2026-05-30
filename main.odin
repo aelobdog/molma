@@ -90,6 +90,8 @@ State :: struct {
 	camera:                    rl.Camera3D,
 	window_size:               [2]i32,
 	button_states:             [MAX_BUTTON_STATES]bool,
+	unique_atom_locations:     [dynamic]i32,
+	atom_transformation_list:  [][]rl.Matrix,
 }
 
 quaternion_from_xyzw :: proc(x, y, z, w: f32) -> rl.Quaternion {
@@ -177,22 +179,27 @@ main :: proc() {
 	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
 	rl.SetTargetFPS(60)
 
-	// note(agodbole): custom shader stuff
-	unit_sphere_model := rl.LoadModelFromMesh(rl.GenMeshSphere(0.1, 32, 32))
-	defer rl.UnloadModel(unit_sphere_model)
+	sphere_mesh := rl.GenMeshSphere(1, 32, 32)
+	defer rl.UnloadMesh(sphere_mesh)
 
-	unit_cylinder_model := rl.LoadModelFromMesh(rl.GenMeshCylinder(1, 1, 32))
-	defer rl.UnloadModel(unit_cylinder_model)
+	shader := rl.LoadShader("shaders/lighting_instancing.vs", "shaders/lighting.fs")
+	defer rl.UnloadShader(shader)
 
-	vs := cstring(#load("shaders/atom-vs.glsl"))
-	fs := cstring(#load("shaders/atom-fs.glsl"))
-	atom_shader := rl.LoadShaderFromMemory(vs, fs)
-	defer rl.UnloadShader(atom_shader)
+	shader.locs[rl.ShaderLocationIndex.MATRIX_MVP] = rl.GetShaderLocation(shader, "mvp")
+	shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW] = rl.GetShaderLocation(shader, "viewPos")
+	shader.locs[rl.ShaderLocationIndex.MATRIX_MODEL] = rl.GetShaderLocationAttrib(
+		shader,
+		"instanceTransform",
+	)
+	ambient_loc := rl.GetShaderLocation(shader, "ambient")
+	ambient_value := [4]f32{0.2, 0.2, 0.2, 1.0}
+	rl.SetShaderValue(shader, ambient_loc, &ambient_value, .VEC4)
+	create_light(.DIRECTIONAL, rl.Vector3{50.0, 50.0, 0.0}, rl.Vector3{}, rl.WHITE, shader)
 
-	unit_sphere_model.materials[0].shader = atom_shader
-	unit_cylinder_model.materials[0].shader = atom_shader
+	init_materials(shader)
 
 	for !rl.WindowShouldClose() {
+
 		state.window_size.x = rl.GetScreenWidth()
 		state.window_size.y = rl.GetScreenHeight()
 
@@ -306,10 +313,37 @@ main :: proc() {
 
 				if rl.IsMouseButtonPressed(.LEFT) {
 					if state.potentially_delete_sphere != -1 {
+						start := 0
+						for i in 0 ..< len(state.unique_atom_locations) {
+							if state.poscar.atoms[i].atomic_number ==
+							   state.poscar.atoms[state.potentially_delete_sphere].atomic_number {
+								start = i
+								break
+							}
+						}
+
+						next := i32(0)
+
+						if start == len(state.unique_atom_locations) - 1 {
+							next = i32(len(state.poscar.atoms))
+						} else {
+							next = state.unique_atom_locations[start + 1]
+						}
+
+						count := next - state.unique_atom_locations[start]
+						for i in start + 1 ..< len(state.unique_atom_locations) {
+							state.unique_atom_locations[i] -= 1
+						}
+
+						if count == 1 {
+							ordered_remove(&(state.unique_atom_locations), start)
+						}
+
 						// note(aelobdog): 'ordered_remove' should retain the sorted-ness of the atoms
 						ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
-						state.potentially_delete_sphere = -1
 
+						state.potentially_delete_sphere = -1
+                        recompute_atom_transformation_list(&state)
 						populate_bonds(&state.bonds, state.poscar.atoms[:])
 					}
 				}
@@ -322,6 +356,18 @@ main :: proc() {
 		state.camera.up = rl.Vector3Transform({0, 1, 0}, rot_matrix)
 		state.camera.target = state.origin
 
+		camera_pos := [3]f32 {
+			state.camera.position.x,
+			state.camera.position.y,
+			state.camera.position.z,
+		}
+		rl.SetShaderValue(
+			shader,
+			shader.locs[rl.ShaderLocationIndex.VECTOR_VIEW],
+			&camera_pos,
+			.VEC3,
+		)
+
 		rl.BeginDrawing(); defer rl.EndDrawing()
 
 		rl.ClearBackground(rl.GetColor(0x444444ff))
@@ -331,12 +377,17 @@ main :: proc() {
 
 		draw_lattice(state.poscar.lattice)
 
-		if state.button_states[toolbar_button_states.ButtonRenderBonds] {
-			draw_bonds(state.bonds, state.poscar.atoms[:], unit_cylinder_model)
-		}
+		// if state.button_states[toolbar_button_states.ButtonRenderBonds] {
+		// 	draw_bonds(state.bonds, state.poscar.atoms[:], unit_cylinder_model)
+		// }
 
 		if len(state.poscar.atoms) > 0 {
-			draw_atoms(state.poscar.atoms[:], unit_sphere_model)
+			draw_atoms(
+				state.unique_atom_locations[:],
+				state.poscar.atoms[:],
+				sphere_mesh,
+				state.atom_transformation_list,
+			)
 		}
 
 		if state.mode == .SELECT {
@@ -368,7 +419,30 @@ main :: proc() {
 			draw_edit_ui(&state)
 		}
 
-        free_all(context.temp_allocator)
+		free_all(context.temp_allocator)
+	}
+}
+update_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, poscar: Poscar) {
+	// note(aelobdog): since the atoms array from the poscar file is always maintained in a sorted state
+	//                 all we have to do is detect where the atom changes, and add it to the list of
+	//                 unique atoms.
+
+	if len(poscar.atoms) < 0 {
+		return
+	}
+
+    if unique_atoms_locations != nil {
+        clear(unique_atoms_locations)
+    }
+
+	last_added_atoms_atomic_number := poscar.atoms[0].atomic_number
+	append(unique_atoms_locations, 0)
+
+	for i in 1 ..< len(poscar.atoms) {
+		if last_added_atoms_atomic_number != poscar.atoms[i].atomic_number {
+			append(unique_atoms_locations, i32(i))
+			last_added_atoms_atomic_number = poscar.atoms[i].atomic_number
+		}
 	}
 }
 
@@ -400,7 +474,55 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 	}
 
 	init_state(state)
+	if state.unique_atom_locations != nil {
+		clear(&(state.unique_atom_locations))
+	}
+	update_unique_atom_locations(&(state.unique_atom_locations), state.poscar)
+
+	if state.atom_transformation_list != nil {
+		for &transformation_list in state.atom_transformation_list {
+			delete(transformation_list)
+		}
+		delete(state.atom_transformation_list)
+	}
+	num_unique_atoms := len(state.unique_atom_locations)
+    recompute_atom_transformation_list(state)
+
 	return
+}
+
+recompute_atom_transformation_list :: proc(state: ^State) {
+	if state.atom_transformation_list != nil {
+		for &transformation_list in state.atom_transformation_list {
+			delete(transformation_list)
+		}
+		delete(state.atom_transformation_list)
+	}
+	num_unique_atoms := len(state.unique_atom_locations)
+
+	state.atom_transformation_list = make([][]rl.Matrix, num_unique_atoms)
+	for i in 0 ..< num_unique_atoms {
+		count := count_number_of_atoms_of_type(
+			i32(i),
+			state.unique_atom_locations[:],
+			state.poscar.atoms[:],
+		)
+		transforms := &state.atom_transformation_list[i]
+		transforms^ = make([]rl.Matrix, count)
+
+		start := state.unique_atom_locations[i]
+		for j in start ..< start + count {
+			atom := state.poscar.atoms[j]
+			translation := rl.MatrixTranslate(atom.position.x, atom.position.y, atom.position.z)
+			axis := rl.Vector3{0, 1, 0}
+			angle := f32(0)
+			rotation := rl.MatrixRotate(axis, angle)
+            radius := atom.radius * RADIUS_PCT
+			scale := rl.MatrixScale(radius, radius, radius)
+
+            transforms[j-start] = translation * rotation * scale
+		}
+	}
 }
 
 draw_bonds :: proc(bonds: Bonds, atoms: []Atom, model: rl.Model) {
@@ -462,11 +584,38 @@ draw_lattice :: proc(lattice: Lattice) {
 	rl.DrawLine3D(_3, _4, rl.GREEN)
 }
 
-draw_atoms :: proc(atoms: []Atom, model: rl.Model) {
-	for i in 0 ..< len(atoms) {
-		element_info := periodic_table[atoms[i].atomic_number]
-		color := rl.GetColor(element_info.color)
-		rl.DrawModel(model, atoms[i].position.xyz, 10 * f32(atoms[i].radius) * RADIUS_PCT, color)
+count_number_of_atoms_of_type :: proc(
+	index: i32,
+	unique_atom_locations: []i32,
+	atoms: []Atom,
+) -> i32 {
+	next := i32(0)
+	if index == i32(len(unique_atom_locations) - 1) {
+		next = i32(len(atoms))
+	} else {
+		next = unique_atom_locations[index + 1]
+	}
+	count := next - unique_atom_locations[index]
+	return count
+}
+
+draw_atoms :: proc(
+	unique_atom_locations: []i32,
+	atoms: []Atom,
+	sphere: rl.Mesh,
+	transformation_list: [][]rl.Matrix,
+) {
+	for i in 0 ..< len(unique_atom_locations) {
+		transforms := raw_data(transformation_list[i])
+
+		material := periodic_table[atoms[unique_atom_locations[i]].atomic_number].material
+		rl.DrawMeshInstanced(
+			sphere,
+			material,
+			transforms,
+			count_number_of_atoms_of_type(i32(i), unique_atom_locations, atoms),
+		)
+		// rl.DrawModel(model, atoms[i].position.xyz, 10 * f32(atoms[i].radius) * RADIUS_PCT, color)
 	}
 }
 
@@ -608,6 +757,11 @@ draw_edit_ui :: proc(state: ^State) {
 				populate_bonds(&(state.bonds), state.poscar.atoms[:])
 			}
 		}
+
+        if tb1 || tb2 || tb3 || tb4 {
+            update_unique_atom_locations(&state.unique_atom_locations, state.poscar)
+            recompute_atom_transformation_list(state)
+        }
 	}
 }
 
