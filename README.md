@@ -28,4 +28,7 @@ see `CITATION.cff`
 - This application distributes the JetBrainsMono font, licensed under the SIL Open Font License 1.1.
 - This application uses the [nativefiledialog-odin](https://github.com/ivansouzamf/nativefiledialog-odin) library
     - This library is based on and distributes binaries and wrappers for the original [nativefiledialog-extended](https://github.com/btzy/nativefiledialog-extended) library
-
+- **Lighting code** is adapted from `rlights.h` from [raylib](https://github.com/raysan5/raylib)
+    - Original authors: Victor Fisac (@victorfisac) and Ramon Santamaria (@raysan5)
+    - Original license: zlib/libpng
+    - Original source: [examples/shaders/rlights.h](https://github.com/raysan5/raylib/blob/master/examples/shaders/rlights.h)
