@@ -42,7 +42,7 @@ void main()
     vec3 viewD = normalize(viewPos - fragPosition);
     vec3 specular = vec3(0.0);
 
-    vec4 tint = colDiffuse*fragColor;
+    vec4 tint = colDiffuse * fragColor;
 
     // NOTE: Implement here your fragment shader code
 
@@ -63,7 +63,7 @@ void main()
             }
 
             float NdotL = max(dot(normal, light), 0.0);
-            lightDot += lights[i].color.rgb*NdotL;
+            lightDot += lights[i].color.rgb * NdotL;
 
             float specCo = 0.0;
             if (NdotL > 0.0) specCo = pow(max(0.0, dot(viewD, reflect(-(light), normal))), 16.0);

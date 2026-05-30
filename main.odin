@@ -343,7 +343,7 @@ main :: proc() {
 						ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
 
 						state.potentially_delete_sphere = -1
-                        recompute_atom_transformation_list(&state)
+						recompute_atom_transformation_list(&state)
 						populate_bonds(&state.bonds, state.poscar.atoms[:])
 					}
 				}
@@ -431,9 +431,9 @@ update_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, posc
 		return
 	}
 
-    if unique_atoms_locations != nil {
-        clear(unique_atoms_locations)
-    }
+	if unique_atoms_locations != nil {
+		clear(unique_atoms_locations)
+	}
 
 	last_added_atoms_atomic_number := poscar.atoms[0].atomic_number
 	append(unique_atoms_locations, 0)
@@ -486,7 +486,7 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 		delete(state.atom_transformation_list)
 	}
 	num_unique_atoms := len(state.unique_atom_locations)
-    recompute_atom_transformation_list(state)
+	recompute_atom_transformation_list(state)
 
 	return
 }
@@ -517,10 +517,10 @@ recompute_atom_transformation_list :: proc(state: ^State) {
 			axis := rl.Vector3{0, 1, 0}
 			angle := f32(0)
 			rotation := rl.MatrixRotate(axis, angle)
-            radius := atom.radius * RADIUS_PCT
+			radius := atom.radius * RADIUS_PCT
 			scale := rl.MatrixScale(radius, radius, radius)
 
-            transforms[j-start] = translation * rotation * scale
+			transforms[j - start] = translation * rotation * scale
 		}
 	}
 }
@@ -758,10 +758,10 @@ draw_edit_ui :: proc(state: ^State) {
 			}
 		}
 
-        if tb1 || tb2 || tb3 || tb4 {
-            update_unique_atom_locations(&state.unique_atom_locations, state.poscar)
-            recompute_atom_transformation_list(state)
-        }
+		if tb1 || tb2 || tb3 || tb4 {
+			update_unique_atom_locations(&state.unique_atom_locations, state.poscar)
+			recompute_atom_transformation_list(state)
+		}
 	}
 }
 

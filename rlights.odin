@@ -13,12 +13,18 @@
 
 package main
 
+import "core:fmt"
 import rl "vendor:raylib"
 
 LightType :: enum i32 {
 	DIRECTIONAL = 0,
 	POINT,
 }
+
+MAX_LIGHTS :: 4
+
+@(private)
+num_lights := 0
 
 Light :: struct {
 	type:           LightType,
@@ -45,19 +51,24 @@ create_light :: proc(
 ) -> Light {
 	light := Light{}
 
-	light.enabled = true
-	light.type = type
-	light.position = position
-	light.target = target
-	light.color = color
+	if num_lights < MAX_LIGHTS {
+		light.enabled = true
+		light.type = type
+		light.position = position
+		light.target = target
+		light.color = color
 
-	light.enabledLoc = rl.GetShaderLocation(shader, "lights[0].enabled")
-	light.typeLoc = rl.GetShaderLocation(shader, "lights[0].type")
-	light.positionLoc = rl.GetShaderLocation(shader, "lights[0].position")
-	light.targetLoc = rl.GetShaderLocation(shader, "lights[0].target")
-	light.colorLoc = rl.GetShaderLocation(shader, "lights[0].color")
-	update_light_values(shader, light)
 
+		light.enabledLoc = rl.GetShaderLocation(shader, fmt.ctprintf("lights[%d].enabled", num_lights))
+		light.typeLoc = rl.GetShaderLocation(shader, fmt.ctprintf("lights[%d].type", num_lights))
+		light.positionLoc = rl.GetShaderLocation(shader, fmt.ctprintf("lights[%d].position", num_lights))
+		light.targetLoc = rl.GetShaderLocation(shader, fmt.ctprintf("lights[%d].target", num_lights))
+		light.colorLoc = rl.GetShaderLocation(shader, fmt.ctprintf("lights[%d].color", num_lights))
+
+		update_light_values(shader, light)
+
+		num_lights += 1
+	}
 	return light
 }
 
