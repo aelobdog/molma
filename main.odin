@@ -343,7 +343,7 @@ main :: proc() {
 						ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
 
 						state.potentially_delete_sphere = -1
-
+                        recompute_atom_transformation_list(&state)
 						populate_bonds(&state.bonds, state.poscar.atoms[:])
 					}
 				}
@@ -422,8 +422,7 @@ main :: proc() {
 		free_all(context.temp_allocator)
 	}
 }
-
-initialize_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, poscar: Poscar) {
+update_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, poscar: Poscar) {
 	// note(aelobdog): since the atoms array from the poscar file is always maintained in a sorted state
 	//                 all we have to do is detect where the atom changes, and add it to the list of
 	//                 unique atoms.
@@ -431,6 +430,10 @@ initialize_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, 
 	if len(poscar.atoms) < 0 {
 		return
 	}
+
+    if unique_atoms_locations != nil {
+        clear(unique_atoms_locations)
+    }
 
 	last_added_atoms_atomic_number := poscar.atoms[0].atomic_number
 	append(unique_atoms_locations, 0)
@@ -474,8 +477,21 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 	if state.unique_atom_locations != nil {
 		clear(&(state.unique_atom_locations))
 	}
-	initialize_unique_atom_locations(&(state.unique_atom_locations), state.poscar)
+	update_unique_atom_locations(&(state.unique_atom_locations), state.poscar)
 
+	if state.atom_transformation_list != nil {
+		for &transformation_list in state.atom_transformation_list {
+			delete(transformation_list)
+		}
+		delete(state.atom_transformation_list)
+	}
+	num_unique_atoms := len(state.unique_atom_locations)
+    recompute_atom_transformation_list(state)
+
+	return
+}
+
+recompute_atom_transformation_list :: proc(state: ^State) {
 	if state.atom_transformation_list != nil {
 		for &transformation_list in state.atom_transformation_list {
 			delete(transformation_list)
@@ -501,14 +517,12 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 			axis := rl.Vector3{0, 1, 0}
 			angle := f32(0)
 			rotation := rl.MatrixRotate(axis, angle)
-            radius := atom.radius
+            radius := atom.radius * RADIUS_PCT
 			scale := rl.MatrixScale(radius, radius, radius)
 
-            transforms[j-start] = translation * scale * rotation
+            transforms[j-start] = translation * rotation * scale
 		}
 	}
-
-	return
 }
 
 draw_bonds :: proc(bonds: Bonds, atoms: []Atom, model: rl.Model) {
@@ -743,6 +757,11 @@ draw_edit_ui :: proc(state: ^State) {
 				populate_bonds(&(state.bonds), state.poscar.atoms[:])
 			}
 		}
+
+        if tb1 || tb2 || tb3 || tb4 {
+            update_unique_atom_locations(&state.unique_atom_locations, state.poscar)
+            recompute_atom_transformation_list(state)
+        }
 	}
 }
 
