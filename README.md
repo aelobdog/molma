@@ -32,3 +32,7 @@ see `CITATION.cff`
     - Original authors: Victor Fisac (@victorfisac) and Ramon Santamaria (@raysan5)
     - Original license: zlib/libpng
     - Original source: [examples/shaders/rlights.h](https://github.com/raysan5/raylib/blob/master/examples/shaders/rlights.h)
+- **Lighting shaders** are adapted from the raylib example [glsl330 shaders](https://github.com/raysan5/raylib/tree/master/examples/shaders/resources/shaders/glsl330)
+    - Original license: zlib/libpng
+    - Original source (fragment shader): [lighting.fs](https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl330/lighting.fs)
+    - Original source (vertex shader): [lighting_instancing.vs](https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl330/lighting_instancing.vs)

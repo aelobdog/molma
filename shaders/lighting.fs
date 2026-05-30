@@ -1,4 +1,4 @@
-// Taken from raylib examples (as-is)
+// Adapted from raylib examples
 // Original license: zlib/libpng
 // Source: https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl330/lighting.fs
 
