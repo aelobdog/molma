@@ -92,6 +92,7 @@ State :: struct {
 	button_states:             [MAX_BUTTON_STATES]bool,
 	unique_atom_locations:     [dynamic]i32,
 	atom_transformation_list:  [][]rl.Matrix,
+	bond_transformation_list:  []rl.Matrix,
 }
 
 quaternion_from_xyzw :: proc(x, y, z, w: f32) -> rl.Quaternion {
@@ -182,6 +183,9 @@ main :: proc() {
 	sphere_mesh := rl.GenMeshSphere(1, 32, 32)
 	defer rl.UnloadMesh(sphere_mesh)
 
+	cylinder_mesh := rl.GenMeshCylinder(1, 1, 32)
+	defer rl.UnloadMesh(cylinder_mesh)
+
 	shader := rl.LoadShader("shaders/lighting_instancing.vs", "shaders/lighting.fs")
 	defer rl.UnloadShader(shader)
 
@@ -197,6 +201,10 @@ main :: proc() {
 	create_light(.DIRECTIONAL, rl.Vector3{50.0, 50.0, 0.0}, rl.Vector3{}, rl.WHITE, shader)
 
 	init_materials(shader)
+
+	bond_material := rl.LoadMaterialDefault()
+	bond_material.shader = shader
+	bond_material.maps[rl.MaterialMapIndex.ALBEDO].color = rl.LIGHTGRAY
 
 	for !rl.WindowShouldClose() {
 
@@ -344,7 +352,7 @@ main :: proc() {
 
 						state.potentially_delete_sphere = -1
 						recompute_atom_transformation_list(&state)
-						populate_bonds(&state.bonds, state.poscar.atoms[:])
+						populate_bonds(&state)
 					}
 				}
 			}
@@ -377,9 +385,9 @@ main :: proc() {
 
 		draw_lattice(state.poscar.lattice)
 
-		// if state.button_states[toolbar_button_states.ButtonRenderBonds] {
-		// 	draw_bonds(state.bonds, state.poscar.atoms[:], unit_cylinder_model)
-		// }
+		if state.button_states[toolbar_button_states.ButtonRenderBonds] {
+			draw_bonds(&state, cylinder_mesh, bond_material)
+		}
 
 		if len(state.poscar.atoms) > 0 {
 			draw_atoms(
@@ -454,8 +462,6 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 		rl.Vector3Normalize(state.poscar.lattice[2]),
 	}
 
-	state.bonds = make(Bonds)
-	populate_bonds(&state.bonds, state.poscar.atoms[:])
 	state.origin = get_molecule_center(state.poscar.atoms[:])
 	state.max_distance = get_farthest_atom_from_center(state.poscar.atoms[:], state.origin)
 	state.aspect_ratio = f32(rl.GetScreenWidth()) / f32(rl.GetScreenHeight())
@@ -485,8 +491,19 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 		}
 		delete(state.atom_transformation_list)
 	}
+
 	num_unique_atoms := len(state.unique_atom_locations)
 	recompute_atom_transformation_list(state)
+
+	if state.bond_transformation_list != nil {
+		delete(state.bond_transformation_list)
+	}
+
+	if state.bonds != nil {
+		delete(state.bonds)
+	}
+	state.bonds = make(Bonds)
+	populate_bonds(state)
 
 	return
 }
@@ -525,7 +542,25 @@ recompute_atom_transformation_list :: proc(state: ^State) {
 	}
 }
 
-draw_bonds :: proc(bonds: Bonds, atoms: []Atom, model: rl.Model) {
+recompute_bond_transformation_list :: proc(state: ^State) {
+	bonds := &state.bonds
+	atoms := &state.poscar.atoms
+
+	if state.bond_transformation_list != nil {
+		delete(state.bond_transformation_list)
+	}
+
+	num_bonds := 0
+	for _, v in bonds {
+		num_bonds += len(v)
+	}
+
+	state.bond_transformation_list = make([]rl.Matrix, num_bonds)
+
+    rad := f32(0.1)
+    up := rl.Vector3{0, 1, 0}
+
+	i := 0
 	for k, v in bonds {
 		for bond_data in v {
 			target := bond_data.destination
@@ -535,26 +570,25 @@ draw_bonds :: proc(bonds: Bonds, atoms: []Atom, model: rl.Model) {
 
 			delta := p2 - p1
 			distance := rl.Vector3Distance(p2, p1)
-			dir := delta / distance
+			dir := rl.Vector3Normalize(delta)
 
-			up := rl.Vector3{0, 1, 0}
-			axis := rl.Vector3{1, 0, 0}
-			angle: f32 = 0.0
-			dot_prod := rl.Vector3DotProduct(up, dir)
+			scale := rl.MatrixScale(rad, distance, rad)
+            rotation := rl.QuaternionToMatrix(rl.QuaternionFromVector3ToVector3(up, dir))
+			translation := rl.MatrixTranslate(p1.x, p1.y, p1.z)
 
-			if dot_prod > 0.9999 {
-				angle = 0.0
-			} else if dot_prod < -0.9999 {
-				angle = 180.0
-			} else {
-				axis = rl.Vector3Normalize(rl.Vector3CrossProduct(up, dir))
-				angle = math.acos(dot_prod) * (180.0 / math.PI)
-			}
-			rad := f32(0.1)
-			scale := rl.Vector3{rad, distance, rad}
-			rl.DrawModelEx(model, p1, axis, angle, scale, rl.LIGHTGRAY)
+			state.bond_transformation_list[i] = translation * rotation * scale
+			i += 1
 		}
 	}
+}
+
+draw_bonds :: proc(state: ^State, cylinder: rl.Mesh, material: rl.Material) {
+	rl.DrawMeshInstanced(
+		cylinder,
+		material,
+		raw_data(state.bond_transformation_list),
+        i32(len(state.bond_transformation_list)),
+	)
 }
 
 zero3 :: rl.Vector3{0, 0, 0}
@@ -615,7 +649,6 @@ draw_atoms :: proc(
 			transforms,
 			count_number_of_atoms_of_type(i32(i), unique_atom_locations, atoms),
 		)
-		// rl.DrawModel(model, atoms[i].position.xyz, 10 * f32(atoms[i].radius) * RADIUS_PCT, color)
 	}
 }
 
@@ -722,7 +755,7 @@ draw_edit_ui :: proc(state: ^State) {
 			if value, ok := strconv.parse_f32(string(cstring(&state.select.xpos[0]))); ok {
 				if value != selected_atom.position.x {
 					selected_atom.position.x = value
-					populate_bonds(&state.bonds, state.poscar.atoms[:])
+					populate_bonds(state)
 				}
 			}
 		}
@@ -731,7 +764,7 @@ draw_edit_ui :: proc(state: ^State) {
 			if value, ok := strconv.parse_f32(string(cstring(&state.select.ypos[0]))); ok {
 				if value != selected_atom.position.y {
 					selected_atom.position.y = value
-					populate_bonds(&(state.bonds), state.poscar.atoms[:])
+					populate_bonds(state)
 				}
 			}
 		}
@@ -740,7 +773,7 @@ draw_edit_ui :: proc(state: ^State) {
 			if value, ok := strconv.parse_f32(string(cstring(&state.select.zpos[0]))); ok {
 				if value != selected_atom.position.z {
 					selected_atom.position.z = value
-					populate_bonds(&(state.bonds), state.poscar.atoms[:])
+					populate_bonds(state)
 				}
 			}
 		}
@@ -754,7 +787,7 @@ draw_edit_ui :: proc(state: ^State) {
 				selected_atom.atomic_number = atomic_number
 				selected_atom.radius = element.cov_radius_ang
 
-				populate_bonds(&(state.bonds), state.poscar.atoms[:])
+				populate_bonds(state)
 			}
 		}
 
@@ -820,7 +853,10 @@ is_near_boundary :: proc(val: f32, direction: int) -> bool {
 	return false
 }
 
-populate_bonds :: proc(bonds: ^Bonds, atoms: []Atom) {
+populate_bonds :: proc(state: ^State) {
+	bonds := &state.bonds
+	atoms := &state.poscar.atoms
+
 	TOLERANCE :: 0.2
 	clear_map(bonds)
 	for i in 0 ..< len(atoms) {
@@ -835,4 +871,5 @@ populate_bonds :: proc(bonds: ^Bonds, atoms: []Atom) {
 			}
 		}
 	}
+	recompute_bond_transformation_list(state)
 }
