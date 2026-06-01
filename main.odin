@@ -91,8 +91,8 @@ State :: struct {
 	window_size:               [2]i32,
 	button_states:             [MAX_BUTTON_STATES]bool,
 	unique_atom_locations:     [dynamic]i32,
-	atom_transformation_list:  [][]rl.Matrix,
-	bond_transformation_list:  []rl.Matrix,
+	atom_transformation_list:  [dynamic][]rl.Matrix,
+	bond_transformation_list:  [dynamic]rl.Matrix,
 }
 
 quaternion_from_xyzw :: proc(x, y, z, w: f32) -> rl.Quaternion {
@@ -134,6 +134,8 @@ init_state :: proc(state: ^State) {
 	state.window_size = [2]i32{rl.GetScreenWidth(), rl.GetScreenHeight()}
 	state.toolbar = toolbar_create()
 	state.button_states = false
+    state.atom_transformation_list = make([dynamic][]rl.Matrix)
+    state.bond_transformation_list = make([dynamic]rl.Matrix)
 }
 
 change_mode_to :: proc(state: ^State, mode: Mode) {
@@ -394,7 +396,7 @@ main :: proc() {
 				state.unique_atom_locations[:],
 				state.poscar.atoms[:],
 				sphere_mesh,
-				state.atom_transformation_list,
+				state.atom_transformation_list[:],
 			)
 		}
 
@@ -485,21 +487,11 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 	}
 	update_unique_atom_locations(&(state.unique_atom_locations), state.poscar)
 
-	if state.atom_transformation_list != nil {
-		for &transformation_list in state.atom_transformation_list {
-			delete(transformation_list)
-		}
-		delete(state.atom_transformation_list)
-	}
-
 	num_unique_atoms := len(state.unique_atom_locations)
 	recompute_atom_transformation_list(state)
 
-	if state.bond_transformation_list != nil {
-		delete(state.bond_transformation_list)
-	}
-
-	if state.bonds != nil {
+    clear(&state.bond_transformation_list)
+    if state.bonds != nil {
 		delete(state.bonds)
 	}
 	state.bonds = make(Bonds)
@@ -509,15 +501,10 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 }
 
 recompute_atom_transformation_list :: proc(state: ^State) {
-	if state.atom_transformation_list != nil {
-		for &transformation_list in state.atom_transformation_list {
-			delete(transformation_list)
-		}
-		delete(state.atom_transformation_list)
-	}
+    clear(&state.atom_transformation_list)
 	num_unique_atoms := len(state.unique_atom_locations)
 
-	state.atom_transformation_list = make([][]rl.Matrix, num_unique_atoms)
+	state.atom_transformation_list = make([dynamic][]rl.Matrix, num_unique_atoms)
 	for i in 0 ..< num_unique_atoms {
 		count := count_number_of_atoms_of_type(
 			i32(i),
@@ -546,19 +533,14 @@ recompute_bond_transformation_list :: proc(state: ^State) {
 	bonds := &state.bonds
 	atoms := &state.poscar.atoms
 
-	if state.bond_transformation_list != nil {
-		delete(state.bond_transformation_list)
-	}
-
 	num_bonds := 0
 	for _, v in bonds {
 		num_bonds += len(v)
 	}
+    resize(&state.bond_transformation_list, num_bonds)
 
-	state.bond_transformation_list = make([]rl.Matrix, num_bonds)
-
-    rad := f32(0.1)
-    up := rl.Vector3{0, 1, 0}
+	rad := f32(0.1)
+	up := rl.Vector3{0, 1, 0}
 
 	i := 0
 	for k, v in bonds {
@@ -573,7 +555,7 @@ recompute_bond_transformation_list :: proc(state: ^State) {
 			dir := rl.Vector3Normalize(delta)
 
 			scale := rl.MatrixScale(rad, distance, rad)
-            rotation := rl.QuaternionToMatrix(rl.QuaternionFromVector3ToVector3(up, dir))
+			rotation := rl.QuaternionToMatrix(rl.QuaternionFromVector3ToVector3(up, dir))
 			translation := rl.MatrixTranslate(p1.x, p1.y, p1.z)
 
 			state.bond_transformation_list[i] = translation * rotation * scale
@@ -587,7 +569,7 @@ draw_bonds :: proc(state: ^State, cylinder: rl.Mesh, material: rl.Material) {
 		cylinder,
 		material,
 		raw_data(state.bond_transformation_list),
-        i32(len(state.bond_transformation_list)),
+		i32(len(state.bond_transformation_list)),
 	)
 }
 

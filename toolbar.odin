@@ -205,6 +205,28 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 								position = {-5, -5, -5, 1.0},
 							},
 						)
+
+						// note(aelobdog): this is most definitely the wrong way to do this,
+						//                 but... meh, "I'll deal with this later"
+						{
+							if state.unique_atom_locations != nil {
+								clear(&(state.unique_atom_locations))
+							}
+							update_unique_atom_locations(
+								&(state.unique_atom_locations),
+								state.poscar,
+							)
+
+							num_unique_atoms := len(state.unique_atom_locations)
+							recompute_atom_transformation_list(state)
+
+                            clear(&state.bond_transformation_list)
+							if state.bonds != nil {
+								delete(state.bonds)
+							}
+							state.bonds = make(Bonds)
+							populate_bonds(state)
+						}
 					}
 				case .ButtonDelete: // do nothing
 				case .ButtonRotate: // do nothing
@@ -232,5 +254,4 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 			}
 		}
 	}
-
 }
