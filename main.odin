@@ -188,7 +188,9 @@ main :: proc() {
 	cylinder_mesh := rl.GenMeshCylinder(1, 1, 32)
 	defer rl.UnloadMesh(cylinder_mesh)
 
-	shader := rl.LoadShader("shaders/lighting_instancing.vs", "shaders/lighting.fs")
+    vs := cstring(#load("shaders/lighting_instancing.vs"))
+    fs := cstring(#load("shaders/lighting.fs"))
+	shader := rl.LoadShaderFromMemory(vs, fs)
 	defer rl.UnloadShader(shader)
 
 	shader.locs[rl.ShaderLocationIndex.MATRIX_MVP] = rl.GetShaderLocation(shader, "mvp")
