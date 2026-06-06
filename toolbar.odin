@@ -115,6 +115,7 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 							state.button_states[item.id] = false
 							change_mode_to(state, .NONE)
 						} else {
+							state.button_states = false
 							state.button_states[item.id] = true
 							change_mode_to(state, .ROTATE)
 						}
@@ -123,10 +124,11 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 					{
 						if state.button_states[item.id] == true {
 							state.button_states[item.id] = false
-                            clear(&state.select.selected_atoms)
+							clear(&state.select.selected_atoms)
 							state.hovering_over_sphere = -1
 							change_mode_to(state, .NONE)
 						} else {
+							state.button_states = false
 							state.button_states[item.id] = true
 							change_mode_to(state, .SELECT)
 						}
@@ -142,6 +144,7 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 							state.button_states[item.id] = false
 							change_mode_to(state, .NONE)
 						} else {
+							state.button_states = false
 							state.button_states[item.id] = true
 							change_mode_to(state, .DELETE)
 						}
@@ -219,7 +222,7 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 							num_unique_atoms := len(state.unique_atom_locations)
 							recompute_atom_transformation_list(state)
 
-                            clear(&state.bond_transformation_list)
+							clear(&state.bond_transformation_list)
 							if state.bonds != nil {
 								delete(state.bonds)
 							}
@@ -235,7 +238,9 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 			}
 		}
 	}
+}
 
+toolbar_draw_active_buttons :: proc(state: ^State, x, y: f32) {
 	for item, index in state.toolbar.items {
 		if item.is_stateful {
 			offset := i32(index * (2 * toolbar_padding + toolbar_item_dim))

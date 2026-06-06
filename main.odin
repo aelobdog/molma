@@ -50,9 +50,9 @@ Mode :: enum {
 	DELETE,
 }
 
-hover_color :: rl.Color {244, 244, 10, 50}
-select_for_edit_color :: rl.Color {30, 244, 30, 50}
-select_for_delete_color :: rl.Color {255, 30, 10, 50}
+hover_color :: rl.Color{244, 244, 10, 50}
+select_for_edit_color :: rl.Color{30, 244, 30, 50}
+select_for_delete_color :: rl.Color{255, 30, 10, 50}
 
 // note(aelobdog): weird name, but whatever
 void :: distinct struct{}
@@ -315,8 +315,8 @@ main :: proc() {
 				if rl.IsMouseButtonPressed(.LEFT) {
 					if state.hovering_over_sphere >= 0 {
 						mouse_position := rl.GetMousePosition()
-                        
-                        // note(aelobdog): this feels like something that should be initialized just once.
+
+						// note(aelobdog): this feels like something that should be initialized just once.
 						ui_box_rect := rl.Rectangle {
 							f32(state.select.ui_rect_x),
 							f32(state.select.ui_rect_y),
@@ -430,7 +430,11 @@ main :: proc() {
 
 		if state.mode == .SELECT {
 			if state.hovering_over_sphere != -1 {
-				draw_highlighted_atom(state.hovering_over_sphere, state.poscar.atoms[:], hover_color)
+				draw_highlighted_atom(
+					state.hovering_over_sphere,
+					state.poscar.atoms[:],
+					hover_color,
+				)
 			}
 
 			for k in state.select.selected_atoms {
@@ -452,6 +456,7 @@ main :: proc() {
 
 		toolbar_y := (f32(state.window_size.y) - state.toolbar.height) / 2.0
 		toolbar_draw(&state, toolbar_padding, toolbar_y)
+		toolbar_draw_active_buttons(&state, toolbar_padding, toolbar_y)
 
 		if state.mode == .SELECT {
 			draw_edit_ui(&state)
@@ -686,12 +691,12 @@ draw_gizmo :: proc(lattice: Lattice, rotation_quaternion: rl.Quaternion) {
 }
 
 draw_edit_ui :: proc(state: ^State) {
-    if len(state.select.selected_atoms) == 1 {
-        key := i32(0)
-        for k in state.select.selected_atoms {
-            key = k
-            break
-        }
+	if len(state.select.selected_atoms) == 1 {
+		key := i32(0)
+		for k in state.select.selected_atoms {
+			key = k
+			break
+		}
 
 		edit_atom := state.poscar.atoms[key]
 		edit_atom_pos := edit_atom.position
