@@ -23,19 +23,16 @@ Species :: struct {
 poscar_parse :: proc(filename: string) -> (Poscar, bool) {
     poscar : Poscar
 
-    data, read_err := os.read_entire_file(filename, context.allocator)
+    data, read_err := os.read_entire_file(filename, context.temp_allocator)
     if read_err != nil {
         return poscar, false
     }
-    defer delete(data, context.allocator)
 
-    // temporary data
     ok := true
     scaling_factor := f32(0)
     atoms_len := 0
     coord_mode_cartesian := false
-    species: [dynamic]Species
-    defer delete(species)
+    species := make([dynamic]Species, context.temp_allocator)
 
     line_number := 0
     lines := strings.split_lines(string(data))
@@ -54,8 +51,7 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
 
     // lattice vectors
     for i in 0..<3 {
-        values, lattice_err := strings.fields(lines[line_number + i])
-        defer delete(values)
+        values, lattice_err := strings.fields(lines[line_number + i], context.temp_allocator)
         if lattice_err != nil {
             return poscar, false
         }
@@ -72,8 +68,7 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
 
     // species names
     if is_ascii_char(strings.trim_left_space(lines[line_number])[0]) {
-        symbols, symbol_err := strings.fields(lines[line_number])
-        defer delete(symbols)
+        symbols, symbol_err := strings.fields(lines[line_number], context.temp_allocator)
 
         for symbol in symbols {
             append(&species, Species { symbol = strings.to_lower(symbol) })
@@ -85,8 +80,7 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
     }
 
     // species count
-    values, cnt_err := strings.fields(lines[line_number])
-    defer delete(values)
+    values, cnt_err := strings.fields(lines[line_number], context.temp_allocator)
     if cnt_err != nil {
         return poscar, false
     }
@@ -123,8 +117,7 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
         }
 
         for i in 0..<s.count {
-            values, pos_err := strings.fields(lines[line_number + i])
-            defer delete(values)
+            values, pos_err := strings.fields(lines[line_number + i], context.temp_allocator)
 
             if pos_err != nil || len(values) < 3 {
                 return poscar, false

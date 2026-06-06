@@ -147,7 +147,6 @@ init_state :: proc(state: ^State) {
 		ui_rect_x           = 0,
 		ui_rect_y           = 0,
 
-		// note(aelobdog): Pretty sure we leak this. Look into it.
 		selected_atoms      = make(hashset),
 	}
 	state.rotate = Rotate {
@@ -183,6 +182,20 @@ selection_list_process_atom :: proc(id: i32, state: ^State) {
 	}
 }
 
+cleanup_state :: proc(state: ^State) {
+    delete(state.select.selected_atoms)
+    delete(state.unique_atom_locations)
+    delete(state.atom_transformation_list)
+    delete(state.bond_transformation_list)
+    delete(state.toolbar.items)
+    delete(state.poscar.atoms)
+
+    for _, bond_data in state.bonds {
+        delete(bond_data)
+    }
+    delete(state.bonds)
+}
+
 main :: proc() {
 	rl.SetTraceLogLevel(.WARNING)
 	context.logger = log.create_console_logger()
@@ -205,6 +218,7 @@ main :: proc() {
 	defer rl.UnloadFont(state.font)
 
 	init_state(&state)
+    defer cleanup_state(&state)
 
 	rl.GuiSetFont(state.font)
 	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
