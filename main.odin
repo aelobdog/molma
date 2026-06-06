@@ -1,5 +1,6 @@
 package main
 
+import "core:dynlib"
 import "core:fmt"
 import "core:log"
 import "core:math"
@@ -54,10 +55,6 @@ hover_color :: rl.Color{244, 244, 10, 50}
 select_for_edit_color :: rl.Color{30, 244, 30, 50}
 select_for_delete_color :: rl.Color{255, 30, 10, 50}
 
-// note(aelobdog): weird name, but whatever
-void :: distinct struct{}
-hashset :: distinct map[i32]void
-
 Select :: struct {
 	// temporary buffers to read in user defined atom positions
 	x_pos:               [8]u8,
@@ -80,7 +77,7 @@ Select :: struct {
 
 	// note(aelobdog): Not sure if this is better than just making a dynamic
 	//                 array for this. Might be something to look into.
-	selected_atoms:      hashset,
+	selected_atoms:      [dynamic]i32,
 }
 
 Rotate :: struct {
@@ -146,8 +143,7 @@ init_state :: proc(state: ^State) {
 		ui_rect_h           = i32(math.ceil(measure_text.y)),
 		ui_rect_x           = 0,
 		ui_rect_y           = 0,
-
-		selected_atoms      = make(hashset),
+		selected_atoms      = make([dynamic]i32),
 	}
 	state.rotate = Rotate {
 		pitch             = 0,
@@ -175,25 +171,38 @@ change_mode_to :: proc(state: ^State, mode: Mode) {
 }
 
 selection_list_process_atom :: proc(id: i32, state: ^State) {
-	if id in state.select.selected_atoms {
-		delete_key(&state.select.selected_atoms, id)
-	} else {
-		state.select.selected_atoms[id] = void{}
+    location := -1
+
+    fmt.println(state.select.selected_atoms[:])
+	for v, k in state.select.selected_atoms {
+		if v == id {
+			location = k
+			break
+		}
 	}
+
+	if location >= 0 {
+		// note(aelobdog): using `ordered_remove` here becuase it will allow
+		//                 us to preserve the order of insertion
+		ordered_remove(&state.select.selected_atoms, location)
+	} else {
+		append(&state.select.selected_atoms, id)
+	}
+    fmt.println(state.select.selected_atoms[:])
 }
 
 cleanup_state :: proc(state: ^State) {
-    delete(state.select.selected_atoms)
-    delete(state.unique_atom_locations)
-    delete(state.atom_transformation_list)
-    delete(state.bond_transformation_list)
-    delete(state.toolbar.items)
-    delete(state.poscar.atoms)
+	delete(state.select.selected_atoms)
+	delete(state.unique_atom_locations)
+	delete(state.atom_transformation_list)
+	delete(state.bond_transformation_list)
+	delete(state.toolbar.items)
+	delete(state.poscar.atoms)
 
-    for _, bond_data in state.bonds {
-        delete(bond_data)
-    }
-    delete(state.bonds)
+	for _, bond_data in state.bonds {
+		delete(bond_data)
+	}
+	delete(state.bonds)
 }
 
 main :: proc() {
@@ -218,7 +227,7 @@ main :: proc() {
 	defer rl.UnloadFont(state.font)
 
 	init_state(&state)
-    defer cleanup_state(&state)
+	defer cleanup_state(&state)
 
 	rl.GuiSetFont(state.font)
 	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), 32)
