@@ -123,8 +123,7 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 					{
 						if state.button_states[item.id] == true {
 							state.button_states[item.id] = false
-							state.select.last_selected = -1
-							state.select.curr_selected = -1
+                            clear(&state.select.selected_atoms)
 							state.hovering_over_sphere = -1
 							change_mode_to(state, .NONE)
 						} else {

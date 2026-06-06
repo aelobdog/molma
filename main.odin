@@ -50,19 +50,37 @@ Mode :: enum {
 	DELETE,
 }
 
+hover_color :: rl.Color {244, 244, 10, 50}
+select_for_edit_color :: rl.Color {30, 244, 30, 50}
+select_for_delete_color :: rl.Color {255, 30, 10, 50}
+
+// note(aelobdog): weird name, but whatever
+void :: distinct struct{}
+hashset :: distinct map[i32]void
+
 Select :: struct {
-	last_selected: i32,
-	curr_selected: i32,
-	xpos:          [32]u8,
-	ypos:          [32]u8,
-	zpos:          [32]u8,
-	atom_symbol:   [3]u8,
-	font_size:     i32,
-	ui_rect_1tb_w: i32,
-	ui_rect_1tb_h: i32,
-	ui_edit_mode:  [4]bool,
-	edit_ui_x:     i32,
-	edit_ui_y:     i32,
+	// temporary buffers to read in user defined atom positions
+	x_pos:               [8]u8,
+	y_pos:               [8]u8,
+	z_pos:               [8]u8,
+	atom_symbol:         [3]u8,
+
+	// trackers for the ui elements
+	x_pos_updated:       bool,
+	y_pos_updated:       bool,
+	z_pos_updated:       bool,
+	atom_symbol_updated: bool,
+
+	// ui settings
+	font_size:           i32,
+	ui_rect_w:           i32,
+	ui_rect_h:           i32,
+	ui_rect_x:           i32,
+	ui_rect_y:           i32,
+
+	// note(aelobdog): Not sure if this is better than just making a dynamic
+	//                 array for this. Might be something to look into.
+	selected_atoms:      hashset,
 }
 
 Rotate :: struct {
@@ -115,15 +133,22 @@ init_state :: proc(state: ^State) {
 	state.hovering_over_sphere = -1
 	state.potentially_delete_sphere = -1
 	state.select = Select {
-		last_selected = -1,
-		curr_selected = -1,
-		xpos          = 0,
-		ypos          = 0,
-		zpos          = 0,
-		font_size     = ui_font_size,
-		ui_rect_1tb_w = 2 * ui_padding + i32(math.ceil(measure_text.x)),
-		ui_rect_1tb_h = i32(math.ceil(measure_text.y)),
-		ui_edit_mode  = false,
+		x_pos               = 0,
+		y_pos               = 0,
+		z_pos               = 0,
+		atom_symbol         = 0,
+		x_pos_updated       = false,
+		y_pos_updated       = false,
+		z_pos_updated       = false,
+		atom_symbol_updated = false,
+		font_size           = ui_font_size,
+		ui_rect_w           = 2 * ui_padding + i32(math.ceil(measure_text.x)),
+		ui_rect_h           = i32(math.ceil(measure_text.y)),
+		ui_rect_x           = 0,
+		ui_rect_y           = 0,
+
+		// note(aelobdog): Pretty sure we leak this. Look into it.
+		selected_atoms      = make(hashset),
 	}
 	state.rotate = Rotate {
 		pitch             = 0,
@@ -134,8 +159,8 @@ init_state :: proc(state: ^State) {
 	state.window_size = [2]i32{rl.GetScreenWidth(), rl.GetScreenHeight()}
 	state.toolbar = toolbar_create()
 	state.button_states = false
-    state.atom_transformation_list = make([dynamic][]rl.Matrix)
-    state.bond_transformation_list = make([dynamic]rl.Matrix)
+	state.atom_transformation_list = make([dynamic][]rl.Matrix)
+	state.bond_transformation_list = make([dynamic]rl.Matrix)
 }
 
 change_mode_to :: proc(state: ^State, mode: Mode) {
@@ -150,9 +175,12 @@ change_mode_to :: proc(state: ^State, mode: Mode) {
 	state.mode = mode
 }
 
-update_selection_to_hovering_over :: proc(state: ^State) {
-	state.select.last_selected = state.select.curr_selected
-	state.select.curr_selected = state.hovering_over_sphere
+selection_list_process_atom :: proc(id: i32, state: ^State) {
+	if id in state.select.selected_atoms {
+		delete_key(&state.select.selected_atoms, id)
+	} else {
+		state.select.selected_atoms[id] = void{}
+	}
 }
 
 main :: proc() {
@@ -188,8 +216,8 @@ main :: proc() {
 	cylinder_mesh := rl.GenMeshCylinder(1, 1, 32)
 	defer rl.UnloadMesh(cylinder_mesh)
 
-    vs := cstring(#load("shaders/lighting_instancing.vs"))
-    fs := cstring(#load("shaders/lighting.fs"))
+	vs := cstring(#load("shaders/lighting_instancing.vs"))
+	fs := cstring(#load("shaders/lighting.fs"))
 	shader := rl.LoadShaderFromMemory(vs, fs)
 	defer rl.UnloadShader(shader)
 
@@ -237,8 +265,8 @@ main :: proc() {
 
 		winw := rl.GetScreenWidth()
 		winh := rl.GetScreenHeight()
-		state.select.edit_ui_x = winw - (state.select.ui_rect_1tb_w + ui_padding)
-		state.select.edit_ui_y = ui_padding
+		state.select.ui_rect_x = winw - (state.select.ui_rect_w + ui_padding)
+		state.select.ui_rect_y = ui_padding
 
 		ZOOM_SCALE :: 5.0
 		zoom := rl.GetMouseWheelMove()
@@ -285,24 +313,22 @@ main :: proc() {
 				}
 
 				if rl.IsMouseButtonPressed(.LEFT) {
-					if state.select.curr_selected != -1 &&
-					   state.select.curr_selected == state.select.last_selected {
+					if state.hovering_over_sphere >= 0 {
 						mouse_position := rl.GetMousePosition()
+                        
+                        // note(aelobdog): this feels like something that should be initialized just once.
 						ui_box_rect := rl.Rectangle {
-							f32(state.select.edit_ui_x),
-							f32(state.select.edit_ui_y),
-							f32(ui_padding + state.select.ui_rect_1tb_w),
-							f32(
-								len(state.select.ui_edit_mode) *
-								(ui_padding + state.select.ui_rect_1tb_h),
-							),
+							f32(state.select.ui_rect_x),
+							f32(state.select.ui_rect_y),
+							f32(ui_padding + state.select.ui_rect_w),
+							// note(aelobdog): Since we have different bools for each box, we currently have to add
+							//                 a '4' here manually... ugh.
+							f32(4 * (ui_padding + state.select.ui_rect_h)),
 						}
 
 						if !rl.CheckCollisionPointRec(mouse_position, ui_box_rect) {
-							update_selection_to_hovering_over(&state)
+							selection_list_process_atom(state.hovering_over_sphere, &state)
 						}
-					} else {
-						update_selection_to_hovering_over(&state)
 					}
 				}
 			}
@@ -404,18 +430,18 @@ main :: proc() {
 
 		if state.mode == .SELECT {
 			if state.hovering_over_sphere != -1 {
-				draw_highlighted_atom(state.hovering_over_sphere, state.poscar.atoms[:], rl.BLACK)
+				draw_highlighted_atom(state.hovering_over_sphere, state.poscar.atoms[:], hover_color)
 			}
 
-			if state.select.curr_selected != -1 {
-				draw_highlighted_atom(state.select.curr_selected, state.poscar.atoms[:], rl.GREEN)
+			for k in state.select.selected_atoms {
+				draw_highlighted_atom(k, state.poscar.atoms[:], select_for_edit_color)
 			}
 		} else if state.mode == .DELETE {
 			if state.potentially_delete_sphere != -1 {
 				draw_highlighted_atom(
 					state.potentially_delete_sphere,
 					state.poscar.atoms[:],
-					rl.RED,
+					select_for_delete_color,
 				)
 			}
 		}
@@ -434,6 +460,7 @@ main :: proc() {
 		free_all(context.temp_allocator)
 	}
 }
+
 update_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, poscar: Poscar) {
 	// note(aelobdog): since the atoms array from the poscar file is always maintained in a sorted state
 	//                 all we have to do is detect where the atom changes, and add it to the list of
@@ -492,8 +519,8 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 	num_unique_atoms := len(state.unique_atom_locations)
 	recompute_atom_transformation_list(state)
 
-    clear(&state.bond_transformation_list)
-    if state.bonds != nil {
+	clear(&state.bond_transformation_list)
+	if state.bonds != nil {
 		delete(state.bonds)
 	}
 	state.bonds = make(Bonds)
@@ -503,7 +530,7 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 }
 
 recompute_atom_transformation_list :: proc(state: ^State) {
-    clear(&state.atom_transformation_list)
+	clear(&state.atom_transformation_list)
 	num_unique_atoms := len(state.unique_atom_locations)
 
 	state.atom_transformation_list = make([dynamic][]rl.Matrix, num_unique_atoms)
@@ -539,7 +566,7 @@ recompute_bond_transformation_list :: proc(state: ^State) {
 	for _, v in bonds {
 		num_bonds += len(v)
 	}
-    resize(&state.bond_transformation_list, num_bonds)
+	resize(&state.bond_transformation_list, num_bonds)
 
 	rad := f32(0.1)
 	up := rl.Vector3{0, 1, 0}
@@ -638,7 +665,8 @@ draw_atoms :: proc(
 
 draw_highlighted_atom :: proc(id: i32, atoms: []Atom, color: rl.Color) {
 	atom := atoms[id]
-	rl.DrawSphereWires(atom.position.xyz, f32(atom.radius) * RADIUS_PCT, 10, 20, color)
+	// rl.DrawSphereWires(atom.position.xyz, f32(atom.radius) * RADIUS_PCT, 10, 20, color)
+	rl.DrawSphere(atom.position.xyz, f32(atom.radius) * RADIUS_PCT * 1.03, color)
 }
 
 draw_gizmo :: proc(lattice: Lattice, rotation_quaternion: rl.Quaternion) {
@@ -658,85 +686,85 @@ draw_gizmo :: proc(lattice: Lattice, rotation_quaternion: rl.Quaternion) {
 }
 
 draw_edit_ui :: proc(state: ^State) {
-	if state.select.curr_selected != -1 &&
-	   state.select.curr_selected != state.select.last_selected {
-		edit_atom := state.poscar.atoms[state.select.curr_selected]
+    if len(state.select.selected_atoms) == 1 {
+        key := i32(0)
+        for k in state.select.selected_atoms {
+            key = k
+            break
+        }
+
+		edit_atom := state.poscar.atoms[key]
 		edit_atom_pos := edit_atom.position
 
-		state.select.xpos = 0
-		state.select.ypos = 0
-		state.select.zpos = 0
+		state.select.x_pos = 0
+		state.select.y_pos = 0
+		state.select.z_pos = 0
 		state.select.atom_symbol = 0
 
-		fmt.bprintf(state.select.xpos[:], "%.6f", edit_atom_pos.x)
-		fmt.bprintf(state.select.ypos[:], "%.6f", edit_atom_pos.y)
-		fmt.bprintf(state.select.zpos[:], "%.6f", edit_atom_pos.z)
+		fmt.bprintf(state.select.x_pos[:], "%.6f", edit_atom_pos.x)
+		fmt.bprintf(state.select.y_pos[:], "%.6f", edit_atom_pos.y)
+		fmt.bprintf(state.select.z_pos[:], "%.6f", edit_atom_pos.z)
 		fmt.bprintf(state.select.atom_symbol[:], "%s", edit_atom.symbol)
 
-		state.select.last_selected = state.select.curr_selected
-	}
-
-	if state.select.curr_selected != -1 &&
-	   state.select.curr_selected == state.select.last_selected {
-		y1 := state.select.edit_ui_y
-		height := state.select.ui_rect_1tb_h
+		y1 := state.select.ui_rect_y
+		height := state.select.ui_rect_h
 		y2 := y1 + (ui_padding + height)
 		y3 := y2 + (ui_padding + height)
 		y4 := y3 + (ui_padding + height)
 
 		tb1 := rl.GuiTextBox(
 			rl.Rectangle {
-				f32(state.select.edit_ui_x),
+				f32(state.select.ui_rect_x),
 				f32(y1),
-				f32(state.select.ui_rect_1tb_w),
-				f32(state.select.ui_rect_1tb_h),
+				f32(state.select.ui_rect_w),
+				f32(state.select.ui_rect_h),
 			},
-			cstring(&state.select.xpos[0]),
+			cstring(&state.select.x_pos[0]),
 			32,
-			state.select.ui_edit_mode[0],
+			state.select.x_pos_updated,
 		)
 
 		tb2 := rl.GuiTextBox(
 			rl.Rectangle {
-				f32(state.select.edit_ui_x),
+				f32(state.select.ui_rect_x),
 				f32(y2),
-				f32(state.select.ui_rect_1tb_w),
-				f32(state.select.ui_rect_1tb_h),
+				f32(state.select.ui_rect_w),
+				f32(state.select.ui_rect_h),
 			},
-			cstring(&state.select.ypos[0]),
+			cstring(&state.select.y_pos[0]),
 			32,
-			state.select.ui_edit_mode[1],
+			state.select.y_pos_updated,
 		)
 
 		tb3 := rl.GuiTextBox(
 			rl.Rectangle {
-				f32(state.select.edit_ui_x),
+				f32(state.select.ui_rect_x),
 				f32(y3),
-				f32(state.select.ui_rect_1tb_w),
-				f32(state.select.ui_rect_1tb_h),
+				f32(state.select.ui_rect_w),
+				f32(state.select.ui_rect_h),
 			},
-			cstring(&state.select.zpos[0]),
+			cstring(&state.select.z_pos[0]),
 			32,
-			state.select.ui_edit_mode[2],
+			state.select.z_pos_updated,
 		)
 
 		tb4 := rl.GuiTextBox(
 			rl.Rectangle {
-				f32(state.select.edit_ui_x),
+				f32(state.select.ui_rect_x),
 				f32(y4),
-				f32(state.select.ui_rect_1tb_w),
-				f32(state.select.ui_rect_1tb_h),
+				f32(state.select.ui_rect_w),
+				f32(state.select.ui_rect_h),
 			},
 			cstring(&state.select.atom_symbol[0]),
 			32,
-			state.select.ui_edit_mode[3],
+			state.select.atom_symbol_updated,
 		)
 
 		// reconcile data between string position and real position
-		selected_atom := &state.poscar.atoms[state.select.curr_selected]
+		selected_atom := &state.poscar.atoms[key]
 		if tb1 {
-			state.select.ui_edit_mode[0] = !state.select.ui_edit_mode[0]
-			if value, ok := strconv.parse_f32(string(cstring(&state.select.xpos[0]))); ok {
+			state.select.x_pos_updated = !state.select.x_pos_updated
+			if value, ok := strconv.parse_f32(string(cstring(&state.select.x_pos[0]))); ok {
 				if value != selected_atom.position.x {
 					selected_atom.position.x = value
 					populate_bonds(state)
@@ -744,8 +772,8 @@ draw_edit_ui :: proc(state: ^State) {
 			}
 		}
 		if tb2 {
-			state.select.ui_edit_mode[1] = !state.select.ui_edit_mode[1]
-			if value, ok := strconv.parse_f32(string(cstring(&state.select.ypos[0]))); ok {
+			state.select.y_pos_updated = !state.select.y_pos_updated
+			if value, ok := strconv.parse_f32(string(cstring(&state.select.y_pos[0]))); ok {
 				if value != selected_atom.position.y {
 					selected_atom.position.y = value
 					populate_bonds(state)
@@ -753,8 +781,8 @@ draw_edit_ui :: proc(state: ^State) {
 			}
 		}
 		if tb3 {
-			state.select.ui_edit_mode[2] = !state.select.ui_edit_mode[2]
-			if value, ok := strconv.parse_f32(string(cstring(&state.select.zpos[0]))); ok {
+			state.select.z_pos_updated = !state.select.z_pos_updated
+			if value, ok := strconv.parse_f32(string(cstring(&state.select.z_pos[0]))); ok {
 				if value != selected_atom.position.z {
 					selected_atom.position.z = value
 					populate_bonds(state)
@@ -762,7 +790,7 @@ draw_edit_ui :: proc(state: ^State) {
 			}
 		}
 		if tb4 {
-			state.select.ui_edit_mode[3] = !state.select.ui_edit_mode[3]
+			state.select.atom_symbol_updated = !state.select.atom_symbol_updated
 
 			symbol := strings.to_lower(string(cstring(&state.select.atom_symbol[0])))
 			if is_a_valid_symbol(symbol) && symbol != selected_atom.symbol {
