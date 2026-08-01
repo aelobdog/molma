@@ -39,6 +39,11 @@ set_atom_position :: proc(mol: ^Molecule, index: AtomIndex, position: FracVec3) 
 	mol.version += 1
 }
 
+set_atom_species :: proc(mol: ^Molecule, index: AtomIndex, atomic_number: u16) {
+	mol.atoms[int(index)].atomic_number = atomic_number
+	mol.version += 1
+}
+
 set_lattice :: proc(mol: ^Molecule, lattice: Lattice) {
 	mol.lattice = lattice
 	mol.version += 1

@@ -36,6 +36,16 @@ import "core:testing"
 	testing.expect_value(t, mol.atoms[0].position, FracVec3{0.25, 0.25, 0.25})
 }
 
+@test set_atom_species_bumps_version_test :: proc(t: ^testing.T) {
+	mol := Molecule{}
+	defer delete(mol.atoms)
+	idx := add_atom(&mol, Atom{position = FracVec3{0, 0, 0}, atomic_number = 1})
+
+	set_atom_species(&mol, idx, 8)
+	testing.expect_value(t, mol.version, u64(2))
+	testing.expect_value(t, mol.atoms[0].atomic_number, u16(8))
+}
+
 @test remove_atom_bumps_version_test :: proc(t: ^testing.T) {
 	mol := Molecule{}
 	defer delete(mol.atoms)
