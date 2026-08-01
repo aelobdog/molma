@@ -35,7 +35,7 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
     species := make([dynamic]Species, context.temp_allocator)
 
     line_number := 0
-    lines := strings.split_lines(string(data))
+    lines := strings.split_lines(string(data), context.temp_allocator)
 
     // note(aelobdog): process the comment later
     line_number += 1
@@ -71,7 +71,7 @@ poscar_parse :: proc(filename: string) -> (Poscar, bool) {
         symbols, symbol_err := strings.fields(lines[line_number], context.temp_allocator)
 
         for symbol in symbols {
-            append(&species, Species { symbol = strings.to_lower(symbol) })
+            append(&species, Species { symbol = strings.to_lower(symbol, context.temp_allocator) })
         }
         line_number += 1
     }
