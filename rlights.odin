@@ -1,3 +1,6 @@
+// Copyright 2026 Ashwin K. Godbole (aelobdog)
+// SPDX-License-Identifier: Apache-2.0
+
 // Adapted from raylib.lights (examples/shaders/rlights.h)
 //
 // Original work by:

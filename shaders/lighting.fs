@@ -1,3 +1,6 @@
+// Copyright 2026 Ashwin K. Godbole (aelobdog)
+// SPDX-License-Identifier: Apache-2.0
+
 // Adapted from raylib examples
 // Original license: zlib/libpng
 // Source: https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl330/lighting.fs
