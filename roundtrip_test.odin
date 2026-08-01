@@ -1,3 +1,6 @@
+// Copyright 2026 Ashwin K. Godbole (aelobdog)
+// SPDX-License-Identifier: Apache-2.0
+
 // Round-trip regression tests: parse -> write -> parse must be stable.
 // The writer is lossy by design (6 decimal places, always cartesian),
 // so comparisons use a small epsilon.

@@ -1,3 +1,6 @@
+// Copyright 2026 Ashwin K. Godbole (aelobdog)
+// SPDX-License-Identifier: Apache-2.0
+
 // Regression tests pinning current poscar_parse behavior.
 // These document expected behavior so the refactor can be verified step by step.
 
