@@ -22,6 +22,12 @@ import "core:testing"
 	expect_vec3_close(t, nearest_image_vector(lattice, from, to), want)
 }
 
+@test nearest_image_delta_shift_test :: proc(t: ^testing.T) {
+	delta, shift := nearest_image_delta(FracVec3{0.9, 0.5, 0.5}, FracVec3{0.1, 0.5, 0.5})
+	expect_vec3_close(t, delta, FracVec3{0.2, 0, 0})
+	testing.expect_value(t, shift, [3]i8{1, 0, 0})
+}
+
 @test distance_pbc_periodic_identity_test :: proc(t: ^testing.T) {
 	lattice := Lattice{a = CartVec3{5.67, 0, 0}, b = CartVec3{0, 5.67, 0}, c = CartVec3{0, 0, 5.67}}
 	origin := FracVec3{0.3, 0.3, 0.3}

@@ -6,6 +6,7 @@ package model
 Vec3 :: [3]f32
 CartVec3 :: distinct Vec3
 FracVec3 :: distinct Vec3
+AtomIndex :: distinct i32
 
 Atom :: struct {
 	position:      FracVec3,

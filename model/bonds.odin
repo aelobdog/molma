@@ -3,8 +3,11 @@
 
 package model
 
+import "core:math/linalg"
+
 Bond :: struct {
-	a, b: i32,
+	a, b: AtomIndex,
+	shift: [3]i8,
 }
 
 compute_bonds :: proc(atoms: []Atom, lattice: Lattice, tolerance: f32 = 0.2) -> [dynamic]Bond {
@@ -15,8 +18,10 @@ compute_bonds :: proc(atoms: []Atom, lattice: Lattice, tolerance: f32 = 0.2) -> 
 		for j in i + 1 ..< len(atoms) {
 			ej, _ := lookup_by_number(atoms[j].atomic_number)
 			cutoff := ei.cov_radius_ang + ej.cov_radius_ang + tolerance
-			if distance_pbc(lattice, atoms[i].position, atoms[j].position) <= cutoff {
-				append(&bonds, Bond{a = i32(i), b = i32(j)})
+
+			delta, shift := nearest_image_delta(atoms[i].position, atoms[j].position)
+			if linalg.length(cartesian(lattice, delta)) <= cutoff {
+				append(&bonds, Bond{a = AtomIndex(i), b = AtomIndex(j), shift = shift})
 			}
 		}
 	}
