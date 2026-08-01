@@ -184,6 +184,7 @@ atom_map_value :: struct {
 
 poscar_write :: proc(filename: string, poscar: Poscar) -> bool {
     output_sb := strings.builder_make()
+    defer strings.builder_destroy(&output_sb)
 
     atoms := poscar.atoms
     lattice := poscar.lattice
@@ -208,6 +209,7 @@ poscar_write :: proc(filename: string, poscar: Poscar) -> bool {
     // })
 
     atom_map := make([dynamic]atom_map_value)
+    defer delete(atom_map)
     for atom in atoms {
         idx := -1
         for entry, index in atom_map {
@@ -252,7 +254,6 @@ poscar_write :: proc(filename: string, poscar: Poscar) -> bool {
         strings.write_byte(&output_sb, '\n')
     }
 
-    fmt.println(strings.to_string(output_sb))
     ok := os.write_entire_file(filename, strings.to_string(output_sb))
     return true if ok == nil else false
 }
