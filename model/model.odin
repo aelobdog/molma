@@ -4,14 +4,16 @@
 package model
 
 Vec3 :: [3]f32
+CartVec3 :: distinct Vec3
+FracVec3 :: distinct Vec3
 
 Atom :: struct {
-	position:      Vec3,
+	position:      FracVec3,
 	atomic_number: u16,
 }
 
 Lattice :: struct {
-	a, b, c: Vec3,
+	a, b, c: CartVec3,
 }
 
 Molecule :: struct {
