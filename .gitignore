@@ -1,5 +1,5 @@
-test-files/
 *.exe
 *.pdb
 *.rdi
+*.rgi
 todo
