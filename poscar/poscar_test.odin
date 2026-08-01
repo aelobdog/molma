@@ -5,6 +5,7 @@ package poscar
 
 import "core:fmt"
 import "core:math"
+import "core:os"
 import "core:testing"
 import "../model"
 
@@ -97,5 +98,57 @@ count_atoms_of_number :: proc(atoms: []model.Atom, number: u16) -> int {
 
 @test parse_missing_file_fails_test :: proc(t: ^testing.T) {
 	_, ok := parse("test-files/does_not_exist.vasp")
+	testing.expect(t, !ok)
+}
+
+write_and_parse :: proc(t: ^testing.T, name, data: string) -> (model.Molecule, bool) {
+	err := os.write_entire_file(name, data)
+	testing.expect(t, err == nil)
+	return parse(name)
+}
+
+@test parse_three_scaling_factors_test :: proc(t: ^testing.T) {
+	data := "comment\n2.0 1.0 0.5\n1 0 0\n0 1 0\n0 0 1\nh\n1\nCartesian\n0 0 0\n"
+	mol, ok := write_and_parse(t, "scale3_tmp.vasp", data)
+	defer os.remove("scale3_tmp.vasp")
+	defer delete(mol.atoms)
+	testing.expect(t, ok)
+
+	expect_vec_close(t, mol.lattice.a, model.CartVec3{2, 0, 0})
+	expect_vec_close(t, mol.lattice.b, model.CartVec3{0, 1, 0})
+	expect_vec_close(t, mol.lattice.c, model.CartVec3{0, 0, 0.5})
+}
+
+@test parse_negative_scaling_targets_volume_test :: proc(t: ^testing.T) {
+	data := "comment\n-125\n10 0 0\n0 10 0\n0 0 10\nh\n1\nCartesian\n0 0 0\n"
+	mol, ok := write_and_parse(t, "scale_neg_tmp.vasp", data)
+	defer os.remove("scale_neg_tmp.vasp")
+	defer delete(mol.atoms)
+	testing.expect(t, ok)
+
+	// raw cell is 1000 A^3, target 125 -> uniform scale 0.5
+	expect_vec_close(t, mol.lattice.a, model.CartVec3{5, 0, 0})
+	expect_vec_close(t, mol.lattice.b, model.CartVec3{0, 5, 0})
+	expect_vec_close(t, mol.lattice.c, model.CartVec3{0, 0, 5})
+}
+
+@test parse_two_scaling_factors_fails_test :: proc(t: ^testing.T) {
+	data := "comment\n1.0 2.0\n1 0 0\n0 1 0\n0 0 1\nh\n1\nCartesian\n0 0 0\n"
+	_, ok := write_and_parse(t, "scale2_tmp.vasp", data)
+	defer os.remove("scale2_tmp.vasp")
+	testing.expect(t, !ok)
+}
+
+@test parse_negative_count_fails_test :: proc(t: ^testing.T) {
+	data := "comment\n1.0\n1 0 0\n0 1 0\n0 0 1\nh\n-2\nCartesian\n0 0 0\n0 0 1\n"
+	_, ok := write_and_parse(t, "neg_count_tmp.vasp", data)
+	defer os.remove("neg_count_tmp.vasp")
+	testing.expect(t, !ok)
+}
+
+@test parse_truncated_coordinates_fails_test :: proc(t: ^testing.T) {
+	data := "comment\n1.0\n1 0 0\n0 1 0\n0 0 1\nh\n2\nCartesian\n0 0 0\n"
+	_, ok := write_and_parse(t, "truncated_tmp.vasp", data)
+	defer os.remove("truncated_tmp.vasp")
 	testing.expect(t, !ok)
 }

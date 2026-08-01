@@ -3,6 +3,7 @@
 
 package poscar
 
+import "core:math"
 import "core:os"
 import "core:slice"
 import "core:strconv"
@@ -37,8 +38,38 @@ parse :: proc(filename: string) -> (model.Molecule, bool) {
 
 	line_number := 1 // skip the comment line
 
-	scaling_factor, ok := strconv.parse_f32(strings.trim_space(lines[line_number]))
-	if !ok {
+	ok := true
+
+	scales: [3]f32 = {1, 1, 1}
+	target_volume: f32
+	target_volume_mode := false
+	scale_fields, scale_err := strings.fields(lines[line_number], context.temp_allocator)
+	if scale_err != nil {
+		return mol, false
+	}
+	switch len(scale_fields) {
+	case 1:
+		s, ok := strconv.parse_f32(scale_fields[0])
+		if !ok {
+			return mol, false
+		}
+		if s < 0 {
+			target_volume_mode = true
+			target_volume = -s
+		} else if s == 0 {
+			return mol, false
+		} else {
+			scales = {s, s, s}
+		}
+	case 3:
+		for i in 0 ..< 3 {
+			s, ok := strconv.parse_f32(scale_fields[i])
+			if !ok || s <= 0 {
+				return mol, false
+			}
+			scales[i] = s
+		}
+	case:
 		return mol, false
 	}
 	line_number += 1
@@ -54,11 +85,24 @@ parse :: proc(filename: string) -> (model.Molecule, bool) {
 			if !ok {
 				return mol, false
 			}
-			lattice_vecs[i][j] = component * scaling_factor
+			lattice_vecs[i][j] = component
 		}
 	}
-	mol.lattice = model.Lattice{a = lattice_vecs[0], b = lattice_vecs[1], c = lattice_vecs[2]}
 	line_number += 3
+
+	if target_volume_mode {
+		raw := model.Lattice{a = lattice_vecs[0], b = lattice_vecs[1], c = lattice_vecs[2]}
+		v0 := math.abs(model.volume(raw))
+		if v0 == 0 {
+			return mol, false
+		}
+		s := math.pow(target_volume / v0, f32(1.0 / 3.0))
+		scales = {s, s, s}
+	}
+	for i in 0 ..< 3 {
+		lattice_vecs[i] = lattice_vecs[i] * scales[i]
+	}
+	mol.lattice = model.Lattice{a = lattice_vecs[0], b = lattice_vecs[1], c = lattice_vecs[2]}
 
 	species := make([dynamic]Species, context.temp_allocator)
 
@@ -87,7 +131,7 @@ parse :: proc(filename: string) -> (model.Molecule, bool) {
 			return mol, false
 		}
 		count, ok := strconv.parse_int(v, 10)
-		if !ok {
+		if !ok || count < 0 {
 			return mol, false
 		}
 		species[k].count = count
@@ -129,7 +173,12 @@ parse :: proc(filename: string) -> (model.Molecule, bool) {
 			break
 		}
 		for i in 0 ..< s.count {
-			values, pos_err := strings.fields(lines[line_number + i], context.temp_allocator)
+			coord_line, line_ok := line_at(lines, line_number + i)
+			if !line_ok {
+				parse_ok = false
+				break
+			}
+			values, pos_err := strings.fields(coord_line, context.temp_allocator)
 			if pos_err != nil || len(values) < 3 {
 				parse_ok = false
 				break
