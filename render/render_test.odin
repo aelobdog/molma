@@ -38,6 +38,34 @@ import "../model"
 	testing.expect_value(t, len(species), 0)
 }
 
+@test build_group_transforms_places_and_scales_test :: proc(t: ^testing.T) {
+	atoms := []model.Atom {
+		{position = model.FracVec3{0.5, 0.5, 0.5}, atomic_number = 1},
+		{position = model.FracVec3{0.25, 0.5, 0.5}, atomic_number = 1},
+	}
+	lattice := model.Lattice {
+		a = model.CartVec3{10, 0, 0},
+		b = model.CartVec3{0, 10, 0},
+		c = model.CartVec3{0, 0, 10},
+	}
+
+	group := build_group_transforms(atoms, lattice, 0, 2)
+	defer delete(group)
+
+	testing.expect_value(t, len(group), 2)
+	// hydrogen radius 0.31 * RADIUS_PCT -> uniform scale
+	radius := f32(0.31) * RADIUS_PCT
+	testing.expect_value(t, group[0][0][0], radius)
+	testing.expect_value(t, group[0][1][1], radius)
+	testing.expect_value(t, group[0][2][2], radius)
+	// atom 0 at cell center -> (5, 5, 5); raylib translation at row 3
+	testing.expect_value(t, group[0][0][3], f32(5))
+	testing.expect_value(t, group[0][1][3], f32(5))
+	testing.expect_value(t, group[0][2][3], f32(5))
+	// atom 1 at x = 2.5
+	testing.expect_value(t, group[1][0][3], f32(2.5))
+}
+
 @test reframe_empty_molecule_test :: proc(t: ^testing.T) {
 	view: View
 	mol := model.Molecule{}

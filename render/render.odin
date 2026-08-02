@@ -104,29 +104,35 @@ sync :: proc(r: ^Renderer, mol: ^model.Molecule) {
 	groups, species := compute_groups(mol.atoms[:])
 	defer delete(groups)
 	defer delete(species)
-	resize(&r.transforms, len(groups))
 	for g in 0 ..< len(groups) {
 		start := int(groups[g])
 		end := len(mol.atoms)
 		if g + 1 < len(groups) {
 			end = int(groups[g + 1])
 		}
-		count := end - start
-		group := make([]backend.Matrix4, count)
-		for j in 0 ..< count {
-			atom := mol.atoms[start + j]
-			position := model.Vec3(model.cartesian(mol.lattice, atom.position))
-			e, _ := model.lookup_by_number(atom.atomic_number)
-			radius := e.cov_radius_ang * RADIUS_PCT
-			group[j] = backend.make_transform(position, {radius, radius, radius})
-		}
 		append(&r.groups, groups[g])
 		append(&r.species, species[g])
-		append(&r.transforms, group)
+		append(&r.transforms, build_group_transforms(mol.atoms[:], mol.lattice, start, end - start))
 		ensure_material(r, species[g])
 	}
 
 	r.synced_version = mol.version
+}
+
+build_group_transforms :: proc(
+	atoms: []model.Atom,
+	lattice: model.Lattice,
+	start, count: int,
+) -> []backend.Matrix4 {
+	group := make([]backend.Matrix4, count)
+	for j in 0 ..< count {
+		atom := atoms[start + j]
+		position := model.Vec3(model.cartesian(lattice, atom.position))
+		e, _ := model.lookup_by_number(atom.atomic_number)
+		radius := e.cov_radius_ang * RADIUS_PCT
+		group[j] = backend.make_transform(position, {radius, radius, radius})
+	}
+	return group
 }
 
 compute_groups :: proc(atoms: []model.Atom) -> (groups: [dynamic]i32, species: [dynamic]u16) {
