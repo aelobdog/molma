@@ -1,0 +1,70 @@
+// Copyright 2026 Ashwin K. Godbole (aelobdog)
+// SPDX-License-Identifier: Apache-2.0
+
+package render
+
+import "core:testing"
+import "../model"
+
+@test compute_groups_finds_species_boundaries_test :: proc(t: ^testing.T) {
+	atoms := []model.Atom {
+		{atomic_number = 1},
+		{atomic_number = 1},
+		{atomic_number = 6},
+		{atomic_number = 8},
+		{atomic_number = 8},
+		{atomic_number = 8},
+	}
+	groups, species := compute_groups(atoms)
+	defer delete(groups)
+	defer delete(species)
+
+	testing.expect_value(t, len(groups), 3)
+	testing.expect_value(t, groups[0], i32(0))
+	testing.expect_value(t, groups[1], i32(2))
+	testing.expect_value(t, groups[2], i32(3))
+	testing.expect_value(t, len(species), 3)
+	testing.expect_value(t, species[0], u16(1))
+	testing.expect_value(t, species[1], u16(6))
+	testing.expect_value(t, species[2], u16(8))
+}
+
+@test compute_groups_empty_test :: proc(t: ^testing.T) {
+	groups, species := compute_groups(nil)
+	defer delete(groups)
+	defer delete(species)
+
+	testing.expect_value(t, len(groups), 0)
+	testing.expect_value(t, len(species), 0)
+}
+
+@test reframe_empty_molecule_test :: proc(t: ^testing.T) {
+	view: View
+	mol := model.Molecule{}
+	reframe(&view, &mol, 800, 600)
+
+	testing.expect_value(t, view.origin, [3]f32{0, 0, 0})
+	testing.expect_value(t, view.max_distance, f32(1))
+	testing.expect_value(t, view.camera.fovy, f32(5))
+}
+
+@test reframe_single_atom_test :: proc(t: ^testing.T) {
+	view: View
+	mol := model.Molecule {
+		lattice = model.Lattice {
+			a = model.CartVec3{10, 0, 0},
+			b = model.CartVec3{0, 10, 0},
+			c = model.CartVec3{0, 0, 10},
+		},
+	}
+	defer delete(mol.atoms)
+	model.add_atom(&mol, model.Atom{position = model.FracVec3{0.5, 0.5, 0.5}, atomic_number = 1})
+
+	reframe(&view, &mol, 800, 600)
+
+	// hydrogen at the cell center: origin (5,5,5), max = cov radius (0.31)
+	testing.expect_value(t, view.origin, [3]f32{5, 5, 5})
+	if view.max_distance < 0.3 || view.max_distance > 0.32 {
+		testing.expect(t, false, "max_distance should be the hydrogen covalent radius")
+	}
+}
