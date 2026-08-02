@@ -311,15 +311,15 @@ main :: proc() {
 					app.sel_epoch += 1
 				}
 			}
+		}
 
-			if .CTRL in window.input.mods {
-				if .Z in window.input.keys_pressed && .SHIFT in window.input.mods {
-					redo(&app)
-				} else if .Z in window.input.keys_pressed {
-					undo(&app)
-				} else if .Y in window.input.keys_pressed {
-					redo(&app)
-				}
+		if .CTRL in window.input.mods {
+			if .Z in window.input.keys_pressed && .SHIFT in window.input.mods {
+				redo(&app)
+			} else if .Z in window.input.keys_pressed {
+				undo(&app)
+			} else if .Y in window.input.keys_pressed {
+				redo(&app)
 			}
 		}
 
