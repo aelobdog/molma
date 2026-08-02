@@ -28,6 +28,8 @@ Key :: enum u8 {
 	HOME,
 	END,
 	DELETE,
+	Z,
+	Y,
 }
 
 Input :: struct {
@@ -99,7 +101,7 @@ refresh_input :: proc(window: ^Window) {
 	}
 
 	input.keys_pressed = {}
-	key_map := [9]rl.KeyboardKey {
+	key_map := [11]rl.KeyboardKey {
 		.BACKSPACE,
 		.ENTER,
 		.ESCAPE,
@@ -109,6 +111,8 @@ refresh_input :: proc(window: ^Window) {
 		.HOME,
 		.END,
 		.DELETE,
+		.Z,
+		.Y,
 	}
 	for key, i in Key {
 		if rl.IsKeyPressed(key_map[i]) {

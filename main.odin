@@ -25,6 +25,8 @@ App :: struct {
 	sel_epoch:    u64,
 	panel_epoch:  u64,
 	panel_open:   bool,
+	undo_stack:   [dynamic]model.Molecule,
+	redo_stack:   [dynamic]model.Molecule,
 	edit_x:       [dynamic]u8,
 	edit_y:       [dynamic]u8,
 	edit_z:       [dynamic]u8,
@@ -217,6 +219,8 @@ main :: proc() {
 
 	app: App
 	app.edit_rect = draw.Rect{980, 40, 260, 300}
+	app.undo_stack = make([dynamic]model.Molecule)
+	app.redo_stack = make([dynamic]model.Molecule)
 	app.last_edited = -1
 	app.edit_x = make([dynamic]u8)
 	app.edit_y = make([dynamic]u8)
@@ -239,6 +243,9 @@ main :: proc() {
 	app.mol = mol
 	defer delete(app.mol.atoms)
 	defer delete(app.selection)
+	defer clear_history(&app)
+	defer delete(app.undo_stack)
+	defer delete(app.redo_stack)
 
 	app.renderer = render.init(&window)
 	defer render.destroy(&app.renderer)
@@ -257,6 +264,7 @@ main :: proc() {
 				delete(app.mol.atoms)
 				app.mol = new_mol
 				clear(&app.selection)
+				clear_history(&app)
 				render.reset(&app.renderer)
 				render.reframe(&app.view, &app.mol, window.width, window.height)
 			} else {
@@ -301,6 +309,16 @@ main :: proc() {
 				} else if !(.SHIFT in window.input.mods) {
 					clear(&app.selection)
 					app.sel_epoch += 1
+				}
+			}
+
+			if .CTRL in window.input.mods {
+				if .Z in window.input.keys_pressed && .SHIFT in window.input.mods {
+					redo(&app)
+				} else if .Z in window.input.keys_pressed {
+					undo(&app)
+				} else if .Y in window.input.keys_pressed {
+					redo(&app)
 				}
 			}
 		}
