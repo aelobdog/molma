@@ -41,6 +41,17 @@ main :: proc() {
 		backend.begin_frame(&window)
 		backend.clear(&window, backend.Color{0x33, 0x33, 0x33, 0xff})
 
+		if dropped := backend.poll_dropped_file(&window); len(dropped) > 0 {
+			if new_mol, ok := poscar.parse(dropped); ok {
+				delete(mol.atoms)
+				mol = new_mol
+				render.reset(&renderer)
+				render.reframe(&view, &mol, window.width, window.height)
+			} else {
+				fmt.println("WARNING: failed to parse:", dropped)
+			}
+		}
+
 		render.sync(&renderer, &mol)
 		render.update_view(&view, window.width, window.height)
 		render.draw(&renderer, &view)

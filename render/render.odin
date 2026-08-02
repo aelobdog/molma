@@ -103,6 +103,10 @@ destroy :: proc(r: ^Renderer) {
 	delete(r.bond_transforms)
 }
 
+reset :: proc(r: ^Renderer) {
+	r.synced_version = max(u64)
+}
+
 sync :: proc(r: ^Renderer, mol: ^model.Molecule) {
 	if r.synced_version == mol.version {
 		return

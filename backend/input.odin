@@ -42,6 +42,21 @@ Input :: struct {
 	typed_count:    int,
 }
 
+// poll_dropped_file copies the last dropped path into the window
+// buffer and returns it; valid until the next poll.
+poll_dropped_file :: proc(window: ^Window) -> string {
+	window.dropped_len = 0
+	if rl.IsFileDropped() {
+		dropped := rl.LoadDroppedFiles()
+		defer rl.UnloadDroppedFiles(dropped)
+		if dropped.count > 0 {
+			path := dropped.paths[dropped.count - 1]
+			window.dropped_len = copy(window.dropped[:], string(path))
+		}
+	}
+	return string(window.dropped[:window.dropped_len])
+}
+
 refresh_input :: proc(window: ^Window) {
 	input := &window.input
 	input.typed_count = 0

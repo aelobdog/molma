@@ -30,11 +30,13 @@ font_metrics :: proc(window: ^Window) -> FontMetrics {
 }
 
 Window :: struct {
-	width:  i32,
-	height: i32,
-	input:  Input,
-	font:   rl.Font,
-	shader: rl.Shader,
+	width:       i32,
+	height:      i32,
+	input:       Input,
+	font:        rl.Font,
+	shader:      rl.Shader,
+	dropped:     [1024]u8,
+	dropped_len: int,
 }
 
 init :: proc(width, height: i32, title: cstring) -> Window {
