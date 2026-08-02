@@ -3,9 +3,11 @@
 
 // Package backend is the only place the app touches raylib (or any
 // future platform). It owns the window, the input snapshot, and the
-// execution of draw command lists produced by the ui package.
+// execution of draw command lists produced by the ui layer.
 package backend
 
+import "core:path/slashpath"
+import "core:strings"
 import rl "vendor:raylib"
 
 Color :: struct {
@@ -16,16 +18,28 @@ Window :: struct {
 	width:  i32,
 	height: i32,
 	input:  Input,
+	font:   rl.Font,
 }
 
 init :: proc(width, height: i32, title: cstring) -> Window {
 	rl.SetConfigFlags({rl.ConfigFlag.WINDOW_RESIZABLE, rl.ConfigFlag.WINDOW_ALWAYS_RUN})
 	rl.InitWindow(width, height, title)
 	rl.SetTargetFPS(60)
-	return Window{width = rl.GetScreenWidth(), height = rl.GetScreenHeight()}
+
+	font_path := slashpath.join(
+		{string(rl.GetApplicationDirectory()), "fonts", "JetBrainsMono-2.304", "JetBrainsMono-Regular.ttf"},
+	)
+	font := rl.LoadFont(strings.clone_to_cstring(font_path))
+
+	return Window {
+		width  = rl.GetScreenWidth(),
+		height = rl.GetScreenHeight(),
+		font   = font,
+	}
 }
 
-shutdown :: proc() {
+shutdown :: proc(window: ^Window) {
+	rl.UnloadFont(window.font)
 	rl.CloseWindow()
 }
 
