@@ -78,10 +78,12 @@ import "../model"
 		c = model.CartVec3{0, 0, 10},
 	}
 
-	transforms := build_bond_transforms(atoms, lattice)
+	transforms, ghosts := build_bond_data(atoms, lattice)
 	defer delete(transforms)
+	defer delete(ghosts)
 
 	testing.expect_value(t, len(transforms), 1)
+	testing.expect_value(t, len(ghosts), 0)
 	// bond along +Y: length encoded on the Y diagonal
 	if math.abs(transforms[0][1][1] - 0.8) > 1e-5 {
 		testing.expect(t, false, "bond length should be 0.8")
@@ -103,14 +105,21 @@ import "../model"
 		c = model.CartVec3{0, 0, 10},
 	}
 
-	transforms := build_bond_transforms(atoms, lattice)
+	transforms, ghosts := build_bond_data(atoms, lattice)
 	defer delete(transforms)
+	defer delete(ghosts)
 
 	testing.expect_value(t, len(transforms), 1)
+	testing.expect_value(t, len(ghosts), 1)
 	// p1 = (9.2, 5, 5); p2 = the +1 image at (10, 5, 5); bond length 0.8
 	testing.expect_value(t, transforms[0][0][3], f32(9.2))
 	testing.expect_value(t, transforms[0][1][3], f32(5))
 	testing.expect_value(t, transforms[0][2][3], f32(5))
+	// ghost sphere sits at the image position
+	testing.expect_value(t, ghosts[0].species, u16(1))
+	testing.expect_value(t, ghosts[0].transform[0][3], f32(10))
+	testing.expect_value(t, ghosts[0].transform[1][3], f32(5))
+	testing.expect_value(t, ghosts[0].transform[2][3], f32(5))
 }
 
 @test reframe_empty_molecule_test :: proc(t: ^testing.T) {
