@@ -27,10 +27,11 @@ main :: proc() {
 		ui.begin_frame(&frame, &commands, window.input)
 
 		if ui.begin_panel(&frame, draw.Rect{20, 20, 240, 300}) {
-			if ui.button(&frame, draw.Rect{30, 30, 220, 40}, "Add") {
+			layout := ui.make_layout(&frame, draw.Rect{20, 20, 240, 300})
+			if ui.button(&frame, ui.below(&layout, 40), "Add") {
 				count += 1
 			}
-			if ui.button(&frame, draw.Rect{30, 80, 220, 40}, "Reset") {
+			if ui.button(&frame, ui.below(&layout, 40), "Reset") {
 				count = 0
 			}
 			ui.end_panel(&frame)

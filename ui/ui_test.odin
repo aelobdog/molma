@@ -98,6 +98,34 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	testing.expect(t, is_clip2 && !clip2.push)
 }
 
+@test layout_below_advances_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	begin_frame(&frame, &commands, backend.Input{})
+
+	layout := make_layout(&frame, draw.Rect{20, 20, 200, 300})
+	r1 := below(&layout, 40)
+	r2 := below(&layout, 40)
+
+	testing.expect_value(t, r1, draw.Rect{28, 28, 184, 40})
+	testing.expect_value(t, r2.y, f32(76))
+}
+
+@test layout_right_advances_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	begin_frame(&frame, &commands, backend.Input{})
+
+	layout := make_layout(&frame, draw.Rect{20, 20, 200, 300})
+	r1 := right(&layout, 100, 40)
+	r2 := right(&layout, 100, 40)
+
+	testing.expect_value(t, r1, draw.Rect{28, 28, 100, 40})
+	testing.expect_value(t, r2.x, f32(136))
+}
+
 @test text_width_scales_with_size_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)

@@ -69,6 +69,37 @@ end_panel :: proc(frame: ^Frame) {
 	append(frame.commands, draw.Clip{push = false})
 }
 
+Layout :: struct {
+	panel:   draw.Rect,
+	pos:     [2]f32,
+	padding: f32,
+}
+
+make_layout :: proc(frame: ^Frame, panel: draw.Rect) -> Layout {
+	return Layout {
+		panel   = panel,
+		pos     = {panel.x + frame.theme.padding, panel.y + frame.theme.padding},
+		padding = frame.theme.padding,
+	}
+}
+
+below :: proc(layout: ^Layout, height: f32) -> draw.Rect {
+	rect := draw.Rect {
+		layout.pos.x,
+		layout.pos.y,
+		layout.panel.x + layout.panel.w - layout.padding - layout.pos.x,
+		height,
+	}
+	layout.pos.y += height + layout.padding
+	return rect
+}
+
+right :: proc(layout: ^Layout, width, height: f32) -> draw.Rect {
+	rect := draw.Rect {layout.pos.x, layout.pos.y, width, height}
+	layout.pos.x += width + layout.padding
+	return rect
+}
+
 button :: proc(frame: ^Frame, rect: draw.Rect, label: string) -> bool {
 	hovered := point_in_rect(frame.input.mouse_pos, rect)
 	if .LEFT in frame.input.mouse_pressed && hovered {
