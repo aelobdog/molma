@@ -38,6 +38,11 @@ Frame :: struct {
 	active_rect: draw.Rect,
 }
 
+begin_frame :: proc(frame: ^Frame, commands: ^[dynamic]draw.DrawCommand, input: backend.Input) {
+	frame.commands = commands
+	frame.input = input
+}
+
 point_in_rect :: proc(p: [2]f32, rect: draw.Rect) -> bool {
 	return p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h
 }

@@ -9,42 +9,34 @@ import "../draw"
 
 test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	return Frame {
-		commands = commands,
-		theme    = default_theme(),
-		font     = backend.FontMetrics{advance = 10, base_size = 10},
+		theme = default_theme(),
+		font  = backend.FontMetrics{advance = 10, base_size = 10},
 	}
 }
 
-@test button_clicks_on_press_then_release_test :: proc(t: ^testing.T) {
+@test click_survives_across_frames_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)
 	frame := test_frame(&commands)
-
 	rect := draw.Rect{0, 0, 100, 40}
 
-	frame.input.mouse_pos = {50, 20}
-	frame.input.mouse_pressed = {.LEFT}
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, mouse_pressed = {.LEFT}})
 	testing.expect(t, !button(&frame, rect, "Test"), "no click on press")
 
-	frame.input.mouse_pressed = {}
-	frame.input.mouse_released = {.LEFT}
-	testing.expect(t, button(&frame, rect, "Test"), "click on release over the button")
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, mouse_released = {.LEFT}})
+	testing.expect(t, button(&frame, rect, "Test"), "click on release, same persistent frame")
 }
 
 @test button_drag_off_cancels_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)
 	frame := test_frame(&commands)
-
 	rect := draw.Rect{0, 0, 100, 40}
 
-	frame.input.mouse_pos = {50, 20}
-	frame.input.mouse_pressed = {.LEFT}
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, mouse_pressed = {.LEFT}})
 	button(&frame, rect, "Test")
 
-	frame.input.mouse_pressed = {}
-	frame.input.mouse_pos = {500, 500}
-	frame.input.mouse_released = {.LEFT}
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {500, 500}, mouse_released = {.LEFT}})
 	testing.expect(t, !button(&frame, rect, "Test"), "release away from the button cancels")
 }
 
@@ -52,11 +44,9 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)
 	frame := test_frame(&commands)
-
 	rect := draw.Rect{0, 0, 100, 40}
 
-	frame.input.mouse_pos = {500, 500}
-	frame.input.mouse_pressed = {.LEFT}
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {500, 500}, mouse_pressed = {.LEFT}})
 	testing.expect(t, !button(&frame, rect, "Test"))
 }
 
@@ -65,7 +55,7 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	defer delete(commands)
 	frame := test_frame(&commands)
 
-	frame.input.mouse_pos = {50, 20}
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}})
 	button(&frame, draw.Rect{0, 0, 100, 40}, "Test")
 
 	fill, ok := commands[0].(draw.FillRect)
@@ -78,6 +68,7 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	defer delete(commands)
 	frame := test_frame(&commands)
 
+	begin_frame(&frame, &commands, backend.Input{})
 	begin_panel(&frame, draw.Rect{0, 0, 100, 100})
 	end_panel(&frame)
 
@@ -95,6 +86,7 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	defer delete(commands)
 	frame := test_frame(&commands)
 
+	begin_frame(&frame, &commands, backend.Input{})
 	testing.expect_value(t, text_width(&frame, "abcd", 10), f32(40))
 	testing.expect_value(t, text_width(&frame, "ab", 20), f32(40))
 	testing.expect_value(t, text_width(&frame, "", 10), f32(0))

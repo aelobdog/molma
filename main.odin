@@ -15,13 +15,16 @@ main :: proc() {
 	theme := ui.default_theme()
 	font := backend.font_metrics(&window)
 	count := 0
+	frame: ui.Frame
+	frame.theme = theme
+	frame.font = font
 
 	for !backend.should_close(&window) {
 		backend.begin_frame(&window)
 		backend.clear(&window, backend.Color{0x33, 0x33, 0x33, 0xff})
 
 		commands := make([dynamic]draw.DrawCommand, context.temp_allocator)
-		frame := ui.Frame {commands = &commands, input = window.input, theme = theme, font = font}
+		ui.begin_frame(&frame, &commands, window.input)
 
 		if ui.begin_panel(&frame, draw.Rect{20, 20, 240, 300}) {
 			if ui.button(&frame, draw.Rect{30, 30, 220, 40}, "Add") {
