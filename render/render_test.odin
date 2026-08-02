@@ -3,6 +3,8 @@
 
 package render
 
+import "../backend"
+import "core:fmt"
 import "core:math"
 import "core:testing"
 import "../model"
@@ -107,6 +109,65 @@ import "../model"
 	defer delete(transforms)
 
 	testing.expect_value(t, len(transforms), 0)
+}
+
+expect_vec3_close :: proc(t: ^testing.T, got, want: [3]f32, eps: f32 = 1e-4) {
+	for i in 0 ..< 3 {
+		if math.abs(got[i] - want[i]) > eps {
+			testing.expect(t, false, fmt.tprintf("component %d: got %v, want %v", i, got[i], want[i]))
+		}
+	}
+}
+
+@test screen_ray_center_hits_origin_test :: proc(t: ^testing.T) {
+	camera := backend.Camera {position = {0, 0, 10}, target = {0, 0, 0}, up = {0, 1, 0}, fovy = 10}
+	ray := screen_ray(camera, 800, 600, {400, 300})
+
+	expect_vec3_close(t, ray.origin, {0, 0, 10})
+	expect_vec3_close(t, ray.dir, {0, 0, -1})
+}
+
+@test screen_ray_offsets_with_screen_position_test :: proc(t: ^testing.T) {
+	camera := backend.Camera {position = {0, 0, 10}, target = {0, 0, 0}, up = {0, 1, 0}, fovy = 10}
+	// fovy 10, aspect 800/600: half height 5, half width ~6.67
+	// top-right corner (right + up)
+	ray := screen_ray(camera, 800, 600, {800, 0})
+
+	expect_vec3_close(t, ray.origin[0], f32(10.0 / 2 * 800.0 / 600.0), 1e-3)
+	expect_vec3_close(t, ray.origin[1], f32(5), 1e-3)
+	expect_vec3_close(t, ray.origin[2], f32(10))
+}
+
+@test ray_sphere_intersection_hit_and_miss_test :: proc(t: ^testing.T) {
+	ray := Ray {origin = {0, 0, 10}, dir = {0, 0, -1}}
+
+	hit_t, ok := ray_sphere_intersection(ray, {0, 0, 0}, 1)
+	testing.expect(t, ok)
+	if math.abs(hit_t - 10) > 1e-4 {
+		testing.expect(t, false, "ray distance should be 10")
+	}
+
+	_, ok = ray_sphere_intersection(ray, {5, 0, 0}, 1)
+	testing.expect(t, !ok, "offset sphere misses the ray")
+}
+
+@test pick_atom_finds_nearest_test :: proc(t: ^testing.T) {
+	mol := model.Molecule {
+		lattice = model.Lattice {
+			a = model.CartVec3{10, 0, 0},
+			b = model.CartVec3{0, 10, 0},
+			c = model.CartVec3{0, 0, 10},
+		},
+	}
+	defer delete(mol.atoms)
+	model.add_atom(&mol, model.Atom{position = model.FracVec3{0.5, 0.5, 0.5}, atomic_number = 1})
+	model.add_atom(&mol, model.Atom{position = model.FracVec3{0.5, 0.5, 0.8}, atomic_number = 1})
+
+	camera := backend.Camera {position = {5, 5, 15}, target = {5, 5, 5}, up = {0, 1, 0}, fovy = 10}
+	idx, ok := pick_atom(&mol, camera, 800, 600, {400, 300})
+
+	testing.expect(t, ok)
+	testing.expect_value(t, idx, model.AtomIndex(1)) // the nearer atom at z = 8
 }
 
 @test orbit_and_zoom_affect_camera_test :: proc(t: ^testing.T) {

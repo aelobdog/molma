@@ -15,6 +15,73 @@ BOND_RADIUS :: 0.1
 
 LATTICE_COLOR :: backend.Color{0x4a, 0xb0, 0x4a, 0xff}
 BOND_COLOR :: backend.Color{0xc8, 0xc8, 0xc8, 0xff}
+HOVER_COLOR :: backend.Color{0xf4, 0xf4, 0x0a, 0x59}
+SELECT_COLOR :: backend.Color{0x1e, 0xf4, 0x1e, 0x59}
+
+Ray :: struct {
+	origin: [3]f32,
+	dir:    [3]f32,
+}
+
+screen_ray :: proc(camera: backend.Camera, window_w, window_h: i32, screen: [2]f32) -> Ray {
+	aspect := f32(window_w) / max(f32(window_h), 1)
+	forward := linalg.normalize(camera.target - camera.position)
+	right := linalg.normalize(linalg.cross(forward, camera.up))
+	up := linalg.cross(right, forward)
+
+	half_h := camera.fovy / 2
+	half_w := half_h * aspect
+	nx := screen[0] / f32(window_w) * 2 - 1
+	ny := 1 - screen[1] / f32(window_h) * 2
+
+	return Ray {
+		origin = camera.position + right * (nx * half_w) + up * (ny * half_h),
+		dir    = forward,
+	}
+}
+
+ray_sphere_intersection :: proc(ray: Ray, center: [3]f32, radius: f32) -> (t: f32, ok: bool) {
+	oc := center - ray.origin
+	t = linalg.dot(oc, ray.dir)
+	if t < 0 {
+		return 0, false
+	}
+	closest := ray.origin + ray.dir * t
+	if linalg.length(center - closest) > radius {
+		return 0, false
+	}
+	return t, true
+}
+
+pick_atom :: proc(
+	mol: ^model.Molecule,
+	camera: backend.Camera,
+	window_w, window_h: i32,
+	screen: [2]f32,
+) -> (model.AtomIndex, bool) {
+	ray := screen_ray(camera, window_w, window_h, screen)
+	best_t := f32(1e30)
+	best: model.AtomIndex
+	found := false
+	for atom, i in mol.atoms {
+		center := model.Vec3(model.cartesian(mol.lattice, atom.position))
+		e, _ := model.lookup_by_number(atom.atomic_number)
+		if t, ok := ray_sphere_intersection(ray, center, e.cov_radius_ang * RADIUS_PCT); ok && t < best_t {
+			best_t = t
+			best = model.AtomIndex(i)
+			found = true
+		}
+	}
+	return best, found
+}
+
+atom_transform :: proc(mol: ^model.Molecule, index: model.AtomIndex) -> backend.Matrix4 {
+	atom := mol.atoms[index]
+	position := model.Vec3(model.cartesian(mol.lattice, atom.position))
+	e, _ := model.lookup_by_number(atom.atomic_number)
+	radius := e.cov_radius_ang * RADIUS_PCT * 1.1
+	return backend.make_transform(position, {radius, radius, radius})
+}
 
 View :: struct {
 	origin:       [3]f32,
@@ -86,6 +153,8 @@ Renderer :: struct {
 	sphere:          backend.Mesh,
 	cylinder:        backend.Mesh,
 	bond_material:   backend.Material,
+	hover_material:  backend.Material,
+	select_material: backend.Material,
 	groups:          [dynamic]i32,
 	species:         [dynamic]u16,
 	transforms:      [dynamic][]backend.Matrix4,
@@ -102,6 +171,8 @@ init :: proc(window: ^backend.Window) -> Renderer {
 		sphere         = backend.create_sphere(1, 16, 16),
 		cylinder       = backend.create_cylinder(1, 1, 12),
 		bond_material  = backend.create_material(window, BOND_COLOR),
+		hover_material = backend.create_material(window, HOVER_COLOR),
+		select_material = backend.create_material(window, SELECT_COLOR),
 		groups         = make([dynamic]i32),
 		species        = make([dynamic]u16),
 		transforms     = make([dynamic][]backend.Matrix4),
@@ -113,6 +184,8 @@ destroy :: proc(r: ^Renderer) {
 	backend.destroy_mesh(r.sphere)
 	backend.destroy_mesh(r.cylinder)
 	backend.destroy_material(r.bond_material)
+	backend.destroy_material(r.hover_material)
+	backend.destroy_material(r.select_material)
 	for i in 0 ..< 119 {
 		if r.created[i] {
 			backend.destroy_material(r.materials[i])
@@ -249,7 +322,7 @@ element_color :: proc(e: model.Element) -> backend.Color {
 	}
 }
 
-draw :: proc(r: ^Renderer, view: ^View) {
+draw :: proc(r: ^Renderer, view: ^View, mol: ^model.Molecule, hover: i32, selection: []model.AtomIndex) {
 	backend.begin_3d(view.camera)
 	for line in r.lattice_lines {
 		backend.draw_line_3d(line[0], line[1], LATTICE_COLOR)
@@ -259,6 +332,14 @@ draw :: proc(r: ^Renderer, view: ^View) {
 	}
 	for g in 0 ..< len(r.groups) {
 		backend.draw_instanced(r.sphere, r.materials[r.species[g]], r.transforms[g])
+	}
+	if hover >= 0 && hover < i32(len(mol.atoms)) {
+		t := [1]backend.Matrix4{atom_transform(mol, model.AtomIndex(hover))}
+		backend.draw_instanced(r.sphere, r.hover_material, t[:])
+	}
+	for idx in selection {
+		t := [1]backend.Matrix4{atom_transform(mol, idx)}
+		backend.draw_instanced(r.sphere, r.select_material, t[:])
 	}
 	backend.end_3d()
 }

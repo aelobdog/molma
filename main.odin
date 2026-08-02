@@ -6,36 +6,56 @@ package main
 import "backend"
 import "core:fmt"
 import "draw"
+import "model"
 import "poscar"
 import "render"
 import "ui"
+
+App :: struct {
+	mol:       model.Molecule,
+	selection: [dynamic]model.AtomIndex,
+	hover:     i32,
+	view:      render.View,
+	renderer:  render.Renderer,
+	frame:     ui.Frame,
+}
+
+toggle_selection :: proc(app: ^App, index: model.AtomIndex) {
+	location := -1
+	for v, k in app.selection {
+		if v == index {
+			location = k
+			break
+		}
+	}
+	if location >= 0 {
+		ordered_remove(&app.selection, location)
+	} else {
+		append(&app.selection, index)
+	}
+}
 
 main :: proc() {
 	window := backend.init(1280, 800, "Molma")
 	defer backend.shutdown(&window)
 
+	app: App
 	mol, ok := poscar.parse("test-files/Ge.vasp")
 	if !ok {
 		fmt.println("WARNING: failed to load test-files/Ge.vasp")
 		return
 	}
-	defer delete(mol.atoms)
+	app.mol = mol
+	defer delete(app.mol.atoms)
+	defer delete(app.selection)
 
-	renderer := render.init(&window)
-	defer render.destroy(&renderer)
+	app.renderer = render.init(&window)
+	defer render.destroy(&app.renderer)
 
-	view: render.View
-	render.reframe(&view, &mol, window.width, window.height)
+	render.reframe(&app.view, &app.mol, window.width, window.height)
 
-	theme := ui.default_theme()
-	font := backend.font_metrics(&window)
-	count := 0
-	name := make([dynamic]u8)
-	append(&name, 0)
-	defer delete(name)
-	frame: ui.Frame
-	frame.theme = theme
-	frame.font = font
+	app.frame.theme = ui.default_theme()
+	app.frame.font = backend.font_metrics(&window)
 
 	for !backend.should_close(&window) {
 		backend.begin_frame(&window)
@@ -43,43 +63,53 @@ main :: proc() {
 
 		if dropped := backend.poll_dropped_file(&window); len(dropped) > 0 {
 			if new_mol, ok := poscar.parse(dropped); ok {
-				delete(mol.atoms)
-				mol = new_mol
-				render.reset(&renderer)
-				render.reframe(&view, &mol, window.width, window.height)
+				delete(app.mol.atoms)
+				app.mol = new_mol
+				clear(&app.selection)
+				render.reset(&app.renderer)
+				render.reframe(&app.view, &app.mol, window.width, window.height)
 			} else {
 				fmt.println("WARNING: failed to parse:", dropped)
 			}
 		}
 
-		render.sync(&renderer, &mol)
+		render.sync(&app.renderer, &app.mol)
 		if .RIGHT in window.input.mouse_down {
-			render.orbit(&view, window.input.mouse_delta[0], window.input.mouse_delta[1])
+			render.orbit(&app.view, window.input.mouse_delta[0], window.input.mouse_delta[1])
 		}
 		if window.input.mouse_wheel != 0 {
-			render.zoom(&view, window.input.mouse_wheel)
+			render.zoom(&app.view, window.input.mouse_wheel)
 		}
-		render.update_view(&view, window.width, window.height)
-		render.draw(&renderer, &view)
+		render.update_view(&app.view, window.width, window.height)
+
+		app.hover = -1
+		if idx, picked := render.pick_atom(
+			&app.mol,
+			app.view.camera,
+			window.width,
+			window.height,
+			window.input.mouse_pos,
+		); picked {
+			app.hover = i32(idx)
+		}
+
+		if .LEFT in window.input.mouse_pressed {
+			if app.hover >= 0 {
+				if .SHIFT in window.input.mods {
+					toggle_selection(&app, model.AtomIndex(app.hover))
+				} else {
+					clear(&app.selection)
+					append(&app.selection, model.AtomIndex(app.hover))
+				}
+			} else if !(.SHIFT in window.input.mods) {
+				clear(&app.selection)
+			}
+		}
+
+		render.draw(&app.renderer, &app.view, &app.mol, app.hover, app.selection[:])
 
 		commands := make([dynamic]draw.DrawCommand, context.temp_allocator)
-		ui.begin_frame(&frame, &commands, window.input)
-
-		if ui.begin_panel(&frame, draw.Rect{20, 20, 240, 300}) {
-			layout := ui.make_layout(&frame, draw.Rect{20, 20, 240, 300})
-			if ui.button(&frame, ui.below(&layout, 40), "Add") {
-				count += 1
-			}
-			if ui.button(&frame, ui.below(&layout, 40), "Reset") {
-				count = 0
-			}
-			ui.text_input(&frame, ui.below(&layout, 40), &name)
-			ui.end_panel(&frame)
-		}
-
-		buf: [32]u8
-		s := fmt.bprintf(buf[:], "count: %d | name: %s", count, string(name[:len(name) - 1]))
-		ui.text(&frame, {280, 30}, s, 24, theme.text)
+		ui.begin_frame(&app.frame, &commands, window.input)
 
 		backend.execute_commands(&window, commands[:])
 		backend.end_frame(&window)
