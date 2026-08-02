@@ -22,6 +22,9 @@ App :: struct {
 	frame:        ui.Frame,
 	edit_rect:    draw.Rect,
 	last_edited:  i32,
+	sel_epoch:    u64,
+	panel_epoch:  u64,
+	panel_open:   bool,
 	edit_x:       [dynamic]u8,
 	edit_y:       [dynamic]u8,
 	edit_z:       [dynamic]u8,
@@ -41,6 +44,7 @@ toggle_selection :: proc(app: ^App, index: model.AtomIndex) {
 	} else {
 		append(&app.selection, index)
 	}
+	app.sel_epoch += 1
 }
 
 set_buffer :: proc(buffer: ^[dynamic]u8, s: string) {
@@ -85,6 +89,7 @@ delete_selected :: proc(app: ^App) {
 	}
 	clear(&app.selection)
 	app.last_edited = -1
+	app.sel_epoch += 1
 }
 
 draw_edit_panel :: proc(app: ^App) {
@@ -99,9 +104,18 @@ draw_edit_panel :: proc(app: ^App) {
 		app.last_edited = primary
 	}
 
+	if app.panel_epoch != app.sel_epoch {
+		app.panel_epoch = app.sel_epoch
+		app.panel_open = true
+	}
+	if !app.panel_open {
+		return
+	}
+
 	open := ui.begin_floating_panel(&app.frame, &app.edit_rect, "Atom")
 	defer ui.end_floating_panel(&app.frame)
 	if !open {
+		app.panel_open = false
 		return
 	}
 
@@ -210,9 +224,11 @@ main :: proc() {
 					} else {
 						clear(&app.selection)
 						append(&app.selection, model.AtomIndex(app.hover))
+						app.sel_epoch += 1
 					}
 				} else if !(.SHIFT in window.input.mods) {
 					clear(&app.selection)
+					app.sel_epoch += 1
 				}
 			}
 		}
