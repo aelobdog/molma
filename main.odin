@@ -82,6 +82,7 @@ species_symbol :: proc(app: ^App) -> string {
 }
 
 apply_edits :: proc(app: ^App) {
+	record_undo(app)
 	if len(app.selection) > 1 {
 		apply_delta(app)
 	} else {
@@ -131,6 +132,7 @@ apply_delta :: proc(app: ^App) {
 }
 
 delete_selected :: proc(app: ^App) {
+	record_undo(app)
 	for i := len(app.selection) - 1; i >= 0; i -= 1 {
 		model.remove_atom(&app.mol, app.selection[i])
 	}
