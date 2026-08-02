@@ -3,40 +3,19 @@
 
 package main
 
-import "core:dynlib"
 import "core:fmt"
 import "core:log"
 import "core:math"
 import "core:path/slashpath"
 import "core:strconv"
 import "core:strings"
+import "model"
 import nfd "nativefiledialog-odin"
+import "poscar"
 import rl "vendor:raylib"
 
 WINDOW_HEIGHT :: 600
 WINDOW_WIDTH :: 800
-
-Atom :: struct {
-	atomic_number: i32,
-	radius:        f32,
-	symbol:        string,
-	position:      rl.Vector4,
-}
-
-BondData :: struct {
-	destination: int,
-	length:      f32,
-}
-
-Lattice :: [3]rl.Vector3
-Bonds :: map[int][dynamic]BondData
-
-Lattice_extras :: struct {
-	bxc: rl.Vector3,
-	cxa: rl.Vector3,
-	axb: rl.Vector3,
-	V:   f32,
-}
 
 GIZMO_SIZE :: 40.0
 GIZMO_MARGIN :: 50.0
@@ -80,7 +59,7 @@ Select :: struct {
 
 	// note(aelobdog): Not sure if this is better than just making a dynamic
 	//                 array for this. Might be something to look into.
-	selected_atoms:      [dynamic]i32,
+	selected_atoms:      [dynamic]model.AtomIndex,
 }
 
 Rotate :: struct {
@@ -98,9 +77,9 @@ State :: struct {
 	hovering_over_sphere:      i32,
 	potentially_delete_sphere: i32,
 	toolbar:                   toolbar,
-	poscar:                    Poscar,
-	bonds:                     Bonds,
-	lattice_normalized:        Lattice,
+	mol:                       model.Molecule,
+	synced_version:            u64,
+	lattice_normalized:        [3]rl.Vector3,
 	origin:                    rl.Vector3,
 	max_distance:              f32,
 	aspect_ratio:              f32,
@@ -125,7 +104,6 @@ quaternion_from_xyzw :: proc(x, y, z, w: f32) -> rl.Quaternion {
 ui_font_size :: 32
 ui_font_spacing :: 2
 ui_padding :: 3
-eps :: 1e-3
 
 init_state :: proc(state: ^State) {
 	measure_text := rl.MeasureTextEx(state.font, "-0.000000", ui_font_size, ui_font_spacing)
@@ -146,7 +124,7 @@ init_state :: proc(state: ^State) {
 		ui_rect_h           = i32(math.ceil(measure_text.y)),
 		ui_rect_x           = 0,
 		ui_rect_y           = 0,
-		selected_atoms      = make([dynamic]i32),
+		selected_atoms      = make([dynamic]model.AtomIndex),
 	}
 	state.rotate = Rotate {
 		pitch             = 0,
@@ -157,6 +135,7 @@ init_state :: proc(state: ^State) {
 	state.window_size = [2]i32{rl.GetScreenWidth(), rl.GetScreenHeight()}
 	state.toolbar = toolbar_create()
 	state.button_states = false
+	state.synced_version = 0
 	state.atom_transformation_list = make([dynamic][]rl.Matrix)
 	state.bond_transformation_list = make([dynamic]rl.Matrix)
 }
@@ -174,38 +153,32 @@ change_mode_to :: proc(state: ^State, mode: Mode) {
 }
 
 selection_list_process_atom :: proc(id: i32, state: ^State) {
-    location := -1
+	location := -1
 
-    fmt.println(state.select.selected_atoms[:])
 	for v, k in state.select.selected_atoms {
-		if v == id {
+		if v == model.AtomIndex(id) {
 			location = k
 			break
 		}
 	}
 
 	if location >= 0 {
-		// note(aelobdog): using `ordered_remove` here becuase it will allow
-		//                 us to preserve the order of insertion
 		ordered_remove(&state.select.selected_atoms, location)
 	} else {
-		append(&state.select.selected_atoms, id)
+		append(&state.select.selected_atoms, model.AtomIndex(id))
 	}
-    fmt.println(state.select.selected_atoms[:])
 }
 
 cleanup_state :: proc(state: ^State) {
 	delete(state.select.selected_atoms)
 	delete(state.unique_atom_locations)
+	for group in state.atom_transformation_list {
+		delete(group)
+	}
 	delete(state.atom_transformation_list)
 	delete(state.bond_transformation_list)
 	delete(state.toolbar.items)
-	delete(state.poscar.atoms)
-
-	for _, bond_data in state.bonds {
-		delete(bond_data)
-	}
-	delete(state.bonds)
+	delete(state.mol.atoms)
 }
 
 main :: proc() {
@@ -273,22 +246,13 @@ main :: proc() {
 			dropped_files := rl.LoadDroppedFiles()
 			defer rl.UnloadDroppedFiles(dropped_files)
 
-			// note(aelobdog): we only take the last dropped file for now
 			dropped_file := dropped_files.paths[dropped_files.count - 1]
-
-			fmt.println(dropped_file)
-
-			poscar_dropped, poscar_dropped_ok := poscar_parse(string(dropped_file))
-
-			if !poscar_dropped_ok {
-				fmt.println("WARNING: Unable to parse dropped file's data")
+			if mol, ok := poscar.parse(string(dropped_file)); ok {
+				load_molecule(&state, mol)
 			} else {
-				if state.poscar.atoms != nil do delete(state.poscar.atoms)
-				if state.bonds != nil do delete(state.bonds)
-				load_poscar_data_and_refresh(&state, poscar_dropped)
+				fmt.println("WARNING: Unable to parse dropped file's data")
 			}
 		}
-
 		winw := rl.GetScreenWidth()
 		winh := rl.GetScreenHeight()
 		state.select.ui_rect_x = winw - (state.select.ui_rect_w + ui_padding)
@@ -326,12 +290,13 @@ main :: proc() {
 			{
 				state.hovering_over_sphere = -1
 
-				for i in 0 ..< len(state.poscar.atoms) {
-					ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), state.camera)
+				ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), state.camera)
+				for atom, i in state.mol.atoms {
+					e, _ := model.lookup_by_number(atom.atomic_number)
 					collision := rl.GetRayCollisionSphere(
 						ray,
-						state.poscar.atoms[i].position.xyz,
-						f32(state.poscar.atoms[i].radius) * RADIUS_PCT,
+						atom_cartesian(&state, i),
+						e.cov_radius_ang * RADIUS_PCT,
 					)
 					if collision.hit {
 						state.hovering_over_sphere = i32(i)
@@ -342,13 +307,10 @@ main :: proc() {
 					if state.hovering_over_sphere >= 0 {
 						mouse_position := rl.GetMousePosition()
 
-						// note(aelobdog): this feels like something that should be initialized just once.
 						ui_box_rect := rl.Rectangle {
 							f32(state.select.ui_rect_x),
 							f32(state.select.ui_rect_y),
 							f32(ui_padding + state.select.ui_rect_w),
-							// note(aelobdog): Since we have different bools for each box, we currently have to add
-							//                 a '4' here manually... ugh.
 							f32(4 * (ui_padding + state.select.ui_rect_h)),
 						}
 
@@ -363,12 +325,13 @@ main :: proc() {
 			{
 				state.potentially_delete_sphere = -1
 
-				for i in 0 ..< len(state.poscar.atoms) {
-					ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), state.camera)
+				ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), state.camera)
+				for atom, i in state.mol.atoms {
+					e, _ := model.lookup_by_number(atom.atomic_number)
 					collision := rl.GetRayCollisionSphere(
 						ray,
-						state.poscar.atoms[i].position.xyz,
-						f32(state.poscar.atoms[i].radius) * RADIUS_PCT,
+						atom_cartesian(&state, i),
+						e.cov_radius_ang * RADIUS_PCT,
 					)
 					if collision.hit {
 						state.potentially_delete_sphere = i32(i)
@@ -377,38 +340,11 @@ main :: proc() {
 
 				if rl.IsMouseButtonPressed(.LEFT) {
 					if state.potentially_delete_sphere != -1 {
-						start := 0
-						for i in 0 ..< len(state.unique_atom_locations) {
-							if state.poscar.atoms[i].atomic_number ==
-							   state.poscar.atoms[state.potentially_delete_sphere].atomic_number {
-								start = i
-								break
-							}
-						}
-
-						next := i32(0)
-
-						if start == len(state.unique_atom_locations) - 1 {
-							next = i32(len(state.poscar.atoms))
-						} else {
-							next = state.unique_atom_locations[start + 1]
-						}
-
-						count := next - state.unique_atom_locations[start]
-						for i in start + 1 ..< len(state.unique_atom_locations) {
-							state.unique_atom_locations[i] -= 1
-						}
-
-						if count == 1 {
-							ordered_remove(&(state.unique_atom_locations), start)
-						}
-
-						// note(aelobdog): 'ordered_remove' should retain the sorted-ness of the atoms
-						ordered_remove(&(state.poscar.atoms), state.potentially_delete_sphere)
-
+						model.remove_atom(
+							&state.mol,
+							model.AtomIndex(state.potentially_delete_sphere),
+						)
 						state.potentially_delete_sphere = -1
-						recompute_atom_transformation_list(&state)
-						populate_bonds(&state)
 					}
 				}
 			}
@@ -432,6 +368,8 @@ main :: proc() {
 			.VEC3,
 		)
 
+		ensure_synced(&state)
+
 		rl.BeginDrawing(); defer rl.EndDrawing()
 
 		rl.ClearBackground(rl.GetColor(0x444444ff))
@@ -439,16 +377,16 @@ main :: proc() {
 
 		rl.BeginMode3D(state.camera)
 
-		draw_lattice(state.poscar.lattice)
+		draw_lattice(state.mol.lattice)
 
 		if state.button_states[toolbar_button_states.ButtonRenderBonds] {
 			draw_bonds(&state, cylinder_mesh, bond_material)
 		}
 
-		if len(state.poscar.atoms) > 0 {
+		if len(state.mol.atoms) > 0 {
 			draw_atoms(
 				state.unique_atom_locations[:],
-				state.poscar.atoms[:],
+				state.mol.atoms[:],
 				sphere_mesh,
 				state.atom_transformation_list[:],
 			)
@@ -457,20 +395,20 @@ main :: proc() {
 		if state.mode == .SELECT {
 			if state.hovering_over_sphere != -1 {
 				draw_highlighted_atom(
-					state.hovering_over_sphere,
-					state.poscar.atoms[:],
+					&state,
+					model.AtomIndex(state.hovering_over_sphere),
 					hover_color,
 				)
 			}
 
 			for k in state.select.selected_atoms {
-				draw_highlighted_atom(k, state.poscar.atoms[:], select_for_edit_color)
+				draw_highlighted_atom(&state, k, select_for_edit_color)
 			}
 		} else if state.mode == .DELETE {
 			if state.potentially_delete_sphere != -1 {
 				draw_highlighted_atom(
-					state.potentially_delete_sphere,
-					state.poscar.atoms[:],
+					&state,
+					model.AtomIndex(state.potentially_delete_sphere),
 					select_for_delete_color,
 				)
 			}
@@ -492,45 +430,135 @@ main :: proc() {
 	}
 }
 
-update_unique_atom_locations :: proc(unique_atoms_locations: ^[dynamic]i32, poscar: Poscar) {
-	// note(aelobdog): since the atoms array from the poscar file is always maintained in a sorted state
-	//                 all we have to do is detect where the atom changes, and add it to the list of
-	//                 unique atoms.
-
-	if len(poscar.atoms) < 0 {
+ensure_synced :: proc(state: ^State) {
+	if state.synced_version == state.mol.version {
 		return
 	}
+	rebuild_species_groups(state)
+	rebuild_atom_instances(state)
+	rebuild_bonds(state)
+	state.synced_version = state.mol.version
+}
 
-	if unique_atoms_locations != nil {
-		clear(unique_atoms_locations)
+rebuild_species_groups :: proc(state: ^State) {
+	clear(&state.unique_atom_locations)
+	if len(state.mol.atoms) == 0 {
+		return
 	}
-
-	last_added_atoms_atomic_number := poscar.atoms[0].atomic_number
-	append(unique_atoms_locations, 0)
-
-	for i in 1 ..< len(poscar.atoms) {
-		if last_added_atoms_atomic_number != poscar.atoms[i].atomic_number {
-			append(unique_atoms_locations, i32(i))
-			last_added_atoms_atomic_number = poscar.atoms[i].atomic_number
+	append(&state.unique_atom_locations, 0)
+	last := state.mol.atoms[0].atomic_number
+	for atom, i in state.mol.atoms[1:] {
+		if atom.atomic_number != last {
+			append(&state.unique_atom_locations, i32(i + 1))
+			last = atom.atomic_number
 		}
 	}
 }
 
-load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
-	state.poscar = poscar
-	state.lattice_normalized = Lattice {
-		rl.Vector3Normalize(state.poscar.lattice[0]),
-		rl.Vector3Normalize(state.poscar.lattice[1]),
-		rl.Vector3Normalize(state.poscar.lattice[2]),
+count_in_group :: proc(state: ^State, group_index: int) -> int {
+	start := state.unique_atom_locations[group_index]
+	if group_index + 1 < len(state.unique_atom_locations) {
+		return int(state.unique_atom_locations[group_index + 1] - start)
+	}
+	return len(state.mol.atoms) - int(start)
+}
+
+vec3_to_rl :: proc(v: model.CartVec3) -> rl.Vector3 {
+	return rl.Vector3{v[0], v[1], v[2]}
+}
+
+atom_cartesian :: proc(state: ^State, index: int) -> rl.Vector3 {
+	return vec3_to_rl(model.cartesian(state.mol.lattice, state.mol.atoms[index].position))
+}
+
+rebuild_atom_instances :: proc(state: ^State) {
+	for group in state.atom_transformation_list {
+		delete(group)
+	}
+	clear(&state.atom_transformation_list)
+	resize(&state.atom_transformation_list, len(state.unique_atom_locations))
+
+	for i in 0 ..< len(state.unique_atom_locations) {
+		start := int(state.unique_atom_locations[i])
+		count := count_in_group(state, i)
+		group := make([]rl.Matrix, count)
+		for j in 0 ..< count {
+			atom := state.mol.atoms[start + j]
+			position := atom_cartesian(state, start + j)
+			e, _ := model.lookup_by_number(atom.atomic_number)
+			radius := e.cov_radius_ang * RADIUS_PCT
+			scale := rl.MatrixScale(radius, radius, radius)
+			translation := rl.MatrixTranslate(position.x, position.y, position.z)
+			group[j] = translation * scale
+		}
+		state.atom_transformation_list[i] = group
+	}
+}
+
+rebuild_bonds :: proc(state: ^State) {
+	clear(&state.bond_transformation_list)
+
+	bonds := model.compute_bonds(state.mol.atoms[:], state.mol.lattice)
+	defer delete(bonds)
+
+	rad := f32(0.1)
+	up := rl.Vector3{0, 1, 0}
+	for bond in bonds {
+		p1 := atom_cartesian(state, int(bond.a))
+		shift := model.FracVec3{f32(bond.shift[0]), f32(bond.shift[1]), f32(bond.shift[2])}
+		p2 := vec3_to_rl(model.cartesian(state.mol.lattice, state.mol.atoms[bond.b].position + shift))
+
+		delta := p2 - p1
+		distance := rl.Vector3Distance(p2, p1)
+		if distance < 0.001 {
+			continue
+		}
+		dir := rl.Vector3Normalize(delta)
+
+		scale := rl.MatrixScale(rad, distance, rad)
+		rotation := rl.QuaternionToMatrix(rl.QuaternionFromVector3ToVector3(up, dir))
+		translation := rl.MatrixTranslate(p1.x, p1.y, p1.z)
+
+		append(&state.bond_transformation_list, translation * rotation * scale)
+	}
+}
+
+load_molecule :: proc(state: ^State, mol: model.Molecule) {
+	delete(state.mol.atoms)
+	state.mol = mol
+	reframe_camera(state)
+	rebuild_species_groups(state)
+	rebuild_atom_instances(state)
+	rebuild_bonds(state)
+	state.synced_version = state.mol.version
+}
+
+reframe_camera :: proc(state: ^State) {
+	n := len(state.mol.atoms)
+	if n == 0 {
+		state.origin = rl.Vector3{0, 0, 0}
+		state.max_distance = 1.0
+	} else {
+		sum: rl.Vector3
+		for atom in state.mol.atoms {
+			sum += vec3_to_rl(model.cartesian(state.mol.lattice, atom.position))
+		}
+		state.origin = sum / f32(n)
+
+		max_distance := f32(0)
+		for atom in state.mol.atoms {
+			position := vec3_to_rl(model.cartesian(state.mol.lattice, atom.position))
+			e, _ := model.lookup_by_number(atom.atomic_number)
+			distance := rl.Vector3Distance(position, state.origin) + e.cov_radius_ang
+			max_distance = max(max_distance, distance)
+		}
+		state.max_distance = max_distance
 	}
 
-	state.origin = get_molecule_center(state.poscar.atoms[:])
-	state.max_distance = get_farthest_atom_from_center(state.poscar.atoms[:], state.origin)
 	state.aspect_ratio = f32(rl.GetScreenWidth()) / f32(rl.GetScreenHeight())
 
 	vertical_size := 5 * state.max_distance
-	horizontal_size := 5 * state.max_distance
-	required_fovy_from_width := horizontal_size / state.aspect_ratio
+	required_fovy_from_width := vertical_size / state.aspect_ratio
 
 	state.camera_original_position = rl.Vector3{0, 0, 5 * state.max_distance}
 	state.camera = rl.Camera3D {
@@ -541,86 +569,10 @@ load_poscar_data_and_refresh :: proc(state: ^State, poscar: Poscar) {
 		projection = rl.CameraProjection.ORTHOGRAPHIC,
 	}
 
-	init_state(state)
-	if state.unique_atom_locations != nil {
-		clear(&(state.unique_atom_locations))
-	}
-	update_unique_atom_locations(&(state.unique_atom_locations), state.poscar)
-
-	num_unique_atoms := len(state.unique_atom_locations)
-	recompute_atom_transformation_list(state)
-
-	clear(&state.bond_transformation_list)
-	if state.bonds != nil {
-		delete(state.bonds)
-	}
-	state.bonds = make(Bonds)
-	populate_bonds(state)
-
-	return
-}
-
-recompute_atom_transformation_list :: proc(state: ^State) {
-	clear(&state.atom_transformation_list)
-	num_unique_atoms := len(state.unique_atom_locations)
-
-	state.atom_transformation_list = make([dynamic][]rl.Matrix, num_unique_atoms)
-	for i in 0 ..< num_unique_atoms {
-		count := count_number_of_atoms_of_type(
-			i32(i),
-			state.unique_atom_locations[:],
-			state.poscar.atoms[:],
-		)
-		transforms := &state.atom_transformation_list[i]
-		transforms^ = make([]rl.Matrix, count)
-
-		start := state.unique_atom_locations[i]
-		for j in start ..< start + count {
-			atom := state.poscar.atoms[j]
-			translation := rl.MatrixTranslate(atom.position.x, atom.position.y, atom.position.z)
-			axis := rl.Vector3{0, 1, 0}
-			angle := f32(0)
-			rotation := rl.MatrixRotate(axis, angle)
-			radius := atom.radius * RADIUS_PCT
-			scale := rl.MatrixScale(radius, radius, radius)
-
-			transforms[j - start] = translation * rotation * scale
-		}
-	}
-}
-
-recompute_bond_transformation_list :: proc(state: ^State) {
-	bonds := &state.bonds
-	atoms := &state.poscar.atoms
-
-	num_bonds := 0
-	for _, v in bonds {
-		num_bonds += len(v)
-	}
-	resize(&state.bond_transformation_list, num_bonds)
-
-	rad := f32(0.1)
-	up := rl.Vector3{0, 1, 0}
-
-	i := 0
-	for k, v in bonds {
-		for bond_data in v {
-			target := bond_data.destination
-
-			p1 := atoms[k].position.xyz
-			p2 := atoms[target].position.xyz
-
-			delta := p2 - p1
-			distance := rl.Vector3Distance(p2, p1)
-			dir := rl.Vector3Normalize(delta)
-
-			scale := rl.MatrixScale(rad, distance, rad)
-			rotation := rl.QuaternionToMatrix(rl.QuaternionFromVector3ToVector3(up, dir))
-			translation := rl.MatrixTranslate(p1.x, p1.y, p1.z)
-
-			state.bond_transformation_list[i] = translation * rotation * scale
-			i += 1
-		}
+	state.lattice_normalized = [3]rl.Vector3 {
+		rl.Vector3Normalize(vec3_to_rl(state.mol.lattice.a)),
+		rl.Vector3Normalize(vec3_to_rl(state.mol.lattice.b)),
+		rl.Vector3Normalize(vec3_to_rl(state.mol.lattice.c)),
 	}
 }
 
@@ -633,20 +585,19 @@ draw_bonds :: proc(state: ^State, cylinder: rl.Mesh, material: rl.Material) {
 	)
 }
 
-zero3 :: rl.Vector3{0, 0, 0}
-
-draw_lattice :: proc(lattice: Lattice) {
-	a := lattice[0]
-	b := lattice[1]
-	c := lattice[2]
+draw_lattice :: proc(lattice: model.Lattice) {
+	a := vec3_to_rl(lattice.a)
+	b := vec3_to_rl(lattice.b)
+	c := vec3_to_rl(lattice.c)
 	_1 := a + b
 	_2 := a + c
 	_3 := b + c
 	_4 := a + b + c
+	o := rl.Vector3{0, 0, 0}
 
-	rl.DrawLine3D(zero3, lattice[0], rl.GREEN)
-	rl.DrawLine3D(zero3, lattice[1], rl.GREEN)
-	rl.DrawLine3D(zero3, lattice[2], rl.GREEN)
+	rl.DrawLine3D(o, a, rl.GREEN)
+	rl.DrawLine3D(o, b, rl.GREEN)
+	rl.DrawLine3D(o, c, rl.GREEN)
 
 	rl.DrawLine3D(b, _1, rl.GREEN)
 	rl.DrawLine3D(_1, a, rl.GREEN)
@@ -660,47 +611,30 @@ draw_lattice :: proc(lattice: Lattice) {
 	rl.DrawLine3D(_3, _4, rl.GREEN)
 }
 
-count_number_of_atoms_of_type :: proc(
-	index: i32,
-	unique_atom_locations: []i32,
-	atoms: []Atom,
-) -> i32 {
-	next := i32(0)
-	if index == i32(len(unique_atom_locations) - 1) {
-		next = i32(len(atoms))
-	} else {
-		next = unique_atom_locations[index + 1]
-	}
-	count := next - unique_atom_locations[index]
-	return count
-}
-
 draw_atoms :: proc(
 	unique_atom_locations: []i32,
-	atoms: []Atom,
+	atoms: []model.Atom,
 	sphere: rl.Mesh,
 	transformation_list: [][]rl.Matrix,
 ) {
 	for i in 0 ..< len(unique_atom_locations) {
-		transforms := raw_data(transformation_list[i])
-
 		material := periodic_table[atoms[unique_atom_locations[i]].atomic_number].material
 		rl.DrawMeshInstanced(
 			sphere,
 			material,
-			transforms,
-			count_number_of_atoms_of_type(i32(i), unique_atom_locations, atoms),
+			raw_data(transformation_list[i]),
+			i32(len(transformation_list[i])),
 		)
 	}
 }
 
-draw_highlighted_atom :: proc(id: i32, atoms: []Atom, color: rl.Color) {
-	atom := atoms[id]
-	// rl.DrawSphereWires(atom.position.xyz, f32(atom.radius) * RADIUS_PCT, 10, 20, color)
-	rl.DrawSphere(atom.position.xyz, f32(atom.radius) * RADIUS_PCT * 1.03, color)
+draw_highlighted_atom :: proc(state: ^State, id: model.AtomIndex, color: rl.Color) {
+	atom := state.mol.atoms[id]
+	e, _ := model.lookup_by_number(atom.atomic_number)
+	rl.DrawSphere(atom_cartesian(state, int(id)), e.cov_radius_ang * RADIUS_PCT * 1.03, color)
 }
 
-draw_gizmo :: proc(lattice: Lattice, rotation_quaternion: rl.Quaternion) {
+draw_gizmo :: proc(lattice: [3]rl.Vector3, rotation_quaternion: rl.Quaternion) {
 	gizmo_center := rl.Vector2{GIZMO_MARGIN, f32(rl.GetScreenHeight()) - GIZMO_MARGIN}
 
 	rot_mat := rl.QuaternionToMatrix(rotation_quaternion)
@@ -716,26 +650,45 @@ draw_gizmo :: proc(lattice: Lattice, rotation_quaternion: rl.Quaternion) {
 	}
 }
 
+parse_edit_position :: proc(state: ^State) -> (model.FracVec3, bool) {
+	cart: model.CartVec3
+	okx, oky, okz: bool
+	cart[0], okx = strconv.parse_f32(string(cstring(&state.select.x_pos[0])))
+	cart[1], oky = strconv.parse_f32(string(cstring(&state.select.y_pos[0])))
+	cart[2], okz = strconv.parse_f32(string(cstring(&state.select.z_pos[0])))
+	if !(okx && oky && okz) {
+		return model.FracVec3{}, false
+	}
+	return model.fractional(state.mol.lattice, cart)
+}
+
+commit_position :: proc(state: ^State, key: model.AtomIndex) {
+	if frac, ok := parse_edit_position(state); ok {
+		model.set_atom_position(&state.mol, key, frac)
+	}
+}
+
 draw_edit_ui :: proc(state: ^State) {
 	if len(state.select.selected_atoms) == 1 {
-		key := i32(0)
+		key: model.AtomIndex
 		for k in state.select.selected_atoms {
 			key = k
 			break
 		}
 
-		edit_atom := state.poscar.atoms[key]
-		edit_atom_pos := edit_atom.position
+		edit_atom := state.mol.atoms[key]
+		edit_pos := model.cartesian(state.mol.lattice, edit_atom.position)
+		e, _ := model.lookup_by_number(edit_atom.atomic_number)
 
 		state.select.x_pos = 0
 		state.select.y_pos = 0
 		state.select.z_pos = 0
 		state.select.atom_symbol = 0
 
-		fmt.bprintf(state.select.x_pos[:], "%.6f", edit_atom_pos.x)
-		fmt.bprintf(state.select.y_pos[:], "%.6f", edit_atom_pos.y)
-		fmt.bprintf(state.select.z_pos[:], "%.6f", edit_atom_pos.z)
-		fmt.bprintf(state.select.atom_symbol[:], "%s", edit_atom.symbol)
+		fmt.bprintf(state.select.x_pos[:], "%.6f", edit_pos[0])
+		fmt.bprintf(state.select.y_pos[:], "%.6f", edit_pos[1])
+		fmt.bprintf(state.select.z_pos[:], "%.6f", edit_pos[2])
+		fmt.bprintf(state.select.atom_symbol[:], "%s", e.symbol)
 
 		y1 := state.select.ui_rect_y
 		height := state.select.ui_rect_h
@@ -791,128 +744,24 @@ draw_edit_ui :: proc(state: ^State) {
 			state.select.atom_symbol_updated,
 		)
 
-		// reconcile data between string position and real position
-		selected_atom := &state.poscar.atoms[key]
 		if tb1 {
 			state.select.x_pos_updated = !state.select.x_pos_updated
-			if value, ok := strconv.parse_f32(string(cstring(&state.select.x_pos[0]))); ok {
-				if value != selected_atom.position.x {
-					selected_atom.position.x = value
-					populate_bonds(state)
-				}
-			}
+			commit_position(state, key)
 		}
 		if tb2 {
 			state.select.y_pos_updated = !state.select.y_pos_updated
-			if value, ok := strconv.parse_f32(string(cstring(&state.select.y_pos[0]))); ok {
-				if value != selected_atom.position.y {
-					selected_atom.position.y = value
-					populate_bonds(state)
-				}
-			}
+			commit_position(state, key)
 		}
 		if tb3 {
 			state.select.z_pos_updated = !state.select.z_pos_updated
-			if value, ok := strconv.parse_f32(string(cstring(&state.select.z_pos[0]))); ok {
-				if value != selected_atom.position.z {
-					selected_atom.position.z = value
-					populate_bonds(state)
-				}
-			}
+			commit_position(state, key)
 		}
 		if tb4 {
 			state.select.atom_symbol_updated = !state.select.atom_symbol_updated
-
 			symbol := strings.to_lower(string(cstring(&state.select.atom_symbol[0])))
-			if is_a_valid_symbol(symbol) && symbol != selected_atom.symbol {
-				element, atomic_number := periodic_table_lookup_by_symbol(symbol)
-				selected_atom.symbol = element.symbol
-				selected_atom.atomic_number = atomic_number
-				selected_atom.radius = element.cov_radius_ang
-
-				populate_bonds(state)
-			}
-		}
-
-		if tb1 || tb2 || tb3 || tb4 {
-			update_unique_atom_locations(&state.unique_atom_locations, state.poscar)
-			recompute_atom_transformation_list(state)
-		}
-	}
-}
-
-get_molecule_center :: proc(atoms: []Atom) -> rl.Vector3 {
-	if len(atoms) == 0 do return {0, 0, 0}
-
-	sum := rl.Vector3{0, 0, 0}
-	for atom in atoms {
-		sum += atom.position.xyz
-	}
-
-	return sum / f32(len(atoms))
-}
-
-get_farthest_atom_from_center :: proc(atoms: []Atom, center: rl.Vector3) -> f32 {
-	max_distance := math.NEG_INF_F32
-	for atom in atoms {
-		distance :=
-			rl.Vector3Distance(atom.position.xyz, center) +
-			periodic_table[atom.atomic_number].cov_radius_ang
-		max_distance = max(max_distance, distance)
-	}
-
-	return max_distance
-}
-
-get_lattice_extras :: proc(lattice: Lattice) -> Lattice_extras {
-	a, b, c := lattice[0], lattice[1], lattice[2]
-
-	bxc := rl.Vector3CrossProduct(b, c)
-	cxa := rl.Vector3CrossProduct(c, a)
-	axb := rl.Vector3CrossProduct(a, b)
-
-	return Lattice_extras{bxc = bxc, cxa = cxa, axb = axb, V = rl.Vector3DotProduct(a, bxc)}
-}
-
-// V     = a . (b x c)
-// alpha = P . (b x c) / V
-// beta  = P . (c x a) / V
-// gamma = P . (a x b) / V
-get_alpha_beta_gamma :: proc(le: Lattice_extras, point: rl.Vector3) -> rl.Vector3 {
-	return rl.Vector3 {
-		rl.Vector3DotProduct(point, le.bxc) / le.V,
-		rl.Vector3DotProduct(point, le.cxa) / le.V,
-		rl.Vector3DotProduct(point, le.axb) / le.V,
-	}
-}
-
-is_near_boundary :: proc(val: f32, direction: int) -> bool {
-	if direction == 1 {
-		return val < eps // Near 0, project to +1
-	}
-	if direction == -1 {
-		return val > (1.0 - eps) // Near 1, project to -1
-	}
-	return false
-}
-
-populate_bonds :: proc(state: ^State) {
-	bonds := &state.bonds
-	atoms := &state.poscar.atoms
-
-	TOLERANCE :: 0.2
-	clear_map(bonds)
-	for i in 0 ..< len(atoms) {
-		for j in (i + 1) ..< len(atoms) {
-			distance := rl.Vector3Distance(atoms[i].position.xyz, atoms[j].position.xyz)
-			sum_of_radii := atoms[i].radius + atoms[j].radius
-			if distance <= sum_of_radii + TOLERANCE {
-				if bonds[i] == nil {
-					bonds[i] = make([dynamic]BondData)
-				}
-				append(&bonds[i], BondData{j, distance})
+			if _, atomic_number := model.lookup_by_symbol(symbol); atomic_number != 0 {
+				model.set_atom_species(&state.mol, key, atomic_number)
 			}
 		}
 	}
-	recompute_bond_transformation_list(state)
 }

@@ -4,7 +4,9 @@
 package main
 
 import "core:fmt"
+import "model"
 import nfd "nativefiledialog-odin"
+import "poscar"
 import rl "vendor:raylib"
 
 MAX_BUTTON_STATES :: 5
@@ -163,13 +165,12 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 						switch result {
 						case .Okay:
 							{
-								_ = poscar_write(string(savepath), state.poscar)
+								_ = poscar.write(string(savepath), state.mol)
 								nfd.FreePathU8(savepath)
 							}
-						case .Cancel: // note(aelobdog): handle with UI message
-						case .Error: // note(aelobdog): handle with UI message
+						case .Cancel:
+						case .Error:
 						}
-						populate_bonds(state)
 					}
 				case .FileOpen:
 					{
@@ -178,57 +179,24 @@ toolbar_draw :: proc(state: ^State, x, y: f32) {
 						switch result {
 						case .Okay:
 							{
-								poscar_opened, poscar_dropped_ok := poscar_parse(string(openpath))
-								if !poscar_dropped_ok {
-									fmt.println("WARNING: Unable to parse opened file's data")
+								if mol, ok := poscar.parse(string(openpath)); ok {
+									load_molecule(state, mol)
 								} else {
-									if state.poscar.atoms != nil do delete(state.poscar.atoms)
-									if state.bonds != nil do delete(state.bonds)
-									load_poscar_data_and_refresh(state, poscar_opened)
+									fmt.println("WARNING: Unable to parse opened file's data")
 								}
 								nfd.FreePathU8(openpath)
 							}
-						case .Cancel: // note(aelobdog): handle with UI message
+						case .Cancel:
 						case .Error:
-							fmt.println(nfd.GetError()) // note(aelobdog): handle with UI message
+							fmt.println(nfd.GetError())
 						}
 					}
 				case .ButtonAdd:
 					{
-						unknown_element, unknown_atomic_number := periodic_table_lookup_by_symbol(
-							"x",
+						model.add_atom(
+							&state.mol,
+							model.Atom{position = model.FracVec3{0.5, 0.5, 0.5}, atomic_number = 1},
 						)
-						append(
-							&(state.poscar.atoms),
-							Atom {
-								atomic_number = unknown_atomic_number,
-								radius = unknown_element.cov_radius_ang,
-								symbol = unknown_element.symbol,
-								position = {-5, -5, -5, 1.0},
-							},
-						)
-
-						// note(aelobdog): this is most definitely the wrong way to do this,
-						//                 but... meh, "I'll deal with this later"
-						{
-							if state.unique_atom_locations != nil {
-								clear(&(state.unique_atom_locations))
-							}
-							update_unique_atom_locations(
-								&(state.unique_atom_locations),
-								state.poscar,
-							)
-
-							num_unique_atoms := len(state.unique_atom_locations)
-							recompute_atom_transformation_list(state)
-
-							clear(&state.bond_transformation_list)
-							if state.bonds != nil {
-								delete(state.bonds)
-							}
-							state.bonds = make(Bonds)
-							populate_bonds(state)
-						}
 					}
 				case .ButtonDelete: // do nothing
 				case .ButtonRotate: // do nothing
