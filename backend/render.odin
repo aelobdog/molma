@@ -66,6 +66,28 @@ make_transform :: proc(position, scale: [3]f32) -> Matrix4 {
 	       rl.MatrixScale(scale[0], scale[1], scale[2])
 }
 
+make_cylinder_transform :: proc(p1, p2: [3]f32, radius: f32) -> Matrix4 {
+	up := rl.Vector3{0, 1, 0}
+	a := rl.Vector3{p1[0], p1[1], p1[2]}
+	b := rl.Vector3{p2[0], p2[1], p2[2]}
+	delta := rl.Vector3Subtract(b, a)
+	distance := rl.Vector3Length(delta)
+	dir := rl.Vector3Normalize(delta)
+
+	scale := rl.MatrixScale(radius, distance, radius)
+	rotation := rl.QuaternionToMatrix(rl.QuaternionFromVector3ToVector3(up, dir))
+	translation := rl.MatrixTranslate(p1[0], p1[1], p1[2])
+	return translation * rotation * scale
+}
+
+draw_line_3d :: proc(p0, p1: [3]f32, color: Color) {
+	rl.DrawLine3D(
+		rl.Vector3{p0[0], p0[1], p0[2]},
+		rl.Vector3{p1[0], p1[1], p1[2]},
+		rl.Color{color.r, color.g, color.b, color.a},
+	)
+}
+
 draw_instanced :: proc(mesh: Mesh, material: Material, transforms: []Matrix4) {
 	rl.DrawMeshInstanced(mesh.handle, material.handle, raw_data(transforms), i32(len(transforms)))
 }

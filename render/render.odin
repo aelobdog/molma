@@ -10,6 +10,10 @@ import "core:math/linalg"
 import "../model"
 
 RADIUS_PCT :: 0.6
+BOND_RADIUS :: 0.1
+
+LATTICE_COLOR :: backend.Color{0x4a, 0xb0, 0x4a, 0xff}
+BOND_COLOR :: backend.Color{0xc8, 0xc8, 0xc8, 0xff}
 
 View :: struct {
 	origin:       [3]f32,
@@ -53,14 +57,18 @@ update_view :: proc(view: ^View, window_w, window_h: i32) {
 }
 
 Renderer :: struct {
-	window:         ^backend.Window,
-	synced_version: u64,
-	sphere:         backend.Mesh,
-	groups:         [dynamic]i32,
-	species:        [dynamic]u16,
-	transforms:     [dynamic][]backend.Matrix4,
-	materials:      [119]backend.Material,
-	created:        [119]bool,
+	window:          ^backend.Window,
+	synced_version:  u64,
+	sphere:          backend.Mesh,
+	cylinder:        backend.Mesh,
+	bond_material:   backend.Material,
+	groups:          [dynamic]i32,
+	species:         [dynamic]u16,
+	transforms:      [dynamic][]backend.Matrix4,
+	bond_transforms: [dynamic]backend.Matrix4,
+	lattice_lines:   [12][2][3]f32,
+	materials:       [119]backend.Material,
+	created:         [119]bool,
 }
 
 init :: proc(window: ^backend.Window) -> Renderer {
@@ -68,14 +76,19 @@ init :: proc(window: ^backend.Window) -> Renderer {
 		window         = window,
 		synced_version = max(u64),
 		sphere         = backend.create_sphere(1, 16, 16),
+		cylinder       = backend.create_cylinder(1, 1, 12),
+		bond_material  = backend.create_material(window, BOND_COLOR),
 		groups         = make([dynamic]i32),
 		species        = make([dynamic]u16),
 		transforms     = make([dynamic][]backend.Matrix4),
+		bond_transforms = make([dynamic]backend.Matrix4),
 	}
 }
 
 destroy :: proc(r: ^Renderer) {
 	backend.destroy_mesh(r.sphere)
+	backend.destroy_mesh(r.cylinder)
+	backend.destroy_material(r.bond_material)
 	for i in 0 ..< 119 {
 		if r.created[i] {
 			backend.destroy_material(r.materials[i])
@@ -87,6 +100,7 @@ destroy :: proc(r: ^Renderer) {
 		delete(group)
 	}
 	delete(r.transforms)
+	delete(r.bond_transforms)
 }
 
 sync :: proc(r: ^Renderer, mol: ^model.Molecule) {
@@ -116,7 +130,51 @@ sync :: proc(r: ^Renderer, mol: ^model.Molecule) {
 		ensure_material(r, species[g])
 	}
 
+	clear(&r.bond_transforms)
+	bonds := model.compute_bonds(mol.atoms[:], mol.lattice)
+	defer delete(bonds)
+	for bond in bonds {
+		p1 := model.Vec3(model.cartesian(mol.lattice, mol.atoms[bond.a].position))
+		shift := model.FracVec3{f32(bond.shift[0]), f32(bond.shift[1]), f32(bond.shift[2])}
+		p2 := model.Vec3(model.cartesian(mol.lattice, mol.atoms[bond.b].position + shift))
+		if linalg.length(p2 - p1) < 0.001 {
+			continue
+		}
+		append(&r.bond_transforms, backend.make_cylinder_transform(p1, p2, BOND_RADIUS))
+	}
+
+	o := [3]f32{0, 0, 0}
+	a := model.Vec3(mol.lattice.a)
+	b := model.Vec3(mol.lattice.b)
+	c := model.Vec3(mol.lattice.c)
+	r.lattice_lines = [12][2][3]f32 {
+		{o, a}, {o, b}, {o, c},
+		{b, a + b}, {a + b, a},
+		{c, a + c}, {a + c, a},
+		{b, b + c}, {b + c, c},
+		{a + b, a + b + c}, {a + c, a + b + c}, {b + c, a + b + c},
+	}
+
 	r.synced_version = mol.version
+}
+
+build_bond_transforms :: proc(
+	atoms: []model.Atom,
+	lattice: model.Lattice,
+) -> [dynamic]backend.Matrix4 {
+	transforms := make([dynamic]backend.Matrix4)
+	bonds := model.compute_bonds(atoms, lattice)
+	defer delete(bonds)
+	for bond in bonds {
+		p1 := model.Vec3(model.cartesian(lattice, atoms[bond.a].position))
+		shift := model.FracVec3{f32(bond.shift[0]), f32(bond.shift[1]), f32(bond.shift[2])}
+		p2 := model.Vec3(model.cartesian(lattice, atoms[bond.b].position + shift))
+		if linalg.length(p2 - p1) < 0.001 {
+			continue
+		}
+		append(&transforms, backend.make_cylinder_transform(p1, p2, BOND_RADIUS))
+	}
+	return transforms
 }
 
 build_group_transforms :: proc(
@@ -174,6 +232,12 @@ element_color :: proc(e: model.Element) -> backend.Color {
 
 draw :: proc(r: ^Renderer, view: ^View) {
 	backend.begin_3d(view.camera)
+	for line in r.lattice_lines {
+		backend.draw_line_3d(line[0], line[1], LATTICE_COLOR)
+	}
+	if len(r.bond_transforms) > 0 {
+		backend.draw_instanced(r.cylinder, r.bond_material, r.bond_transforms[:])
+	}
 	for g in 0 ..< len(r.groups) {
 		backend.draw_instanced(r.sphere, r.materials[r.species[g]], r.transforms[g])
 	}

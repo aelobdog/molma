@@ -3,6 +3,7 @@
 
 package render
 
+import "core:math"
 import "core:testing"
 import "../model"
 
@@ -64,6 +65,52 @@ import "../model"
 	testing.expect_value(t, group[0][2][3], f32(5))
 	// atom 1 at x = 2.5
 	testing.expect_value(t, group[1][0][3], f32(2.5))
+}
+
+@test build_bond_transforms_along_y_test :: proc(t: ^testing.T) {
+	atoms := []model.Atom {
+		{position = model.FracVec3{0, 0, 0}, atomic_number = 1},
+		{position = model.FracVec3{0, 0.08, 0}, atomic_number = 1},
+	}
+	lattice := model.Lattice {
+		a = model.CartVec3{10, 0, 0},
+		b = model.CartVec3{0, 10, 0},
+		c = model.CartVec3{0, 0, 10},
+	}
+
+	transforms := build_bond_transforms(atoms, lattice)
+	defer delete(transforms)
+
+	testing.expect_value(t, len(transforms), 1)
+	// bond along +Y: length encoded on the Y diagonal
+	if math.abs(transforms[0][1][1] - 0.8) > 1e-5 {
+		testing.expect(t, false, "bond length should be 0.8")
+	}
+	// cylinder base at p1
+	testing.expect_value(t, transforms[0][0][3], f32(0))
+	testing.expect_value(t, transforms[0][1][3], f32(0))
+	testing.expect_value(t, transforms[0][2][3], f32(0))
+}
+
+@test build_bond_transforms_crosses_boundary_test :: proc(t: ^testing.T) {
+	atoms := []model.Atom {
+		{position = model.FracVec3{0.92, 0.5, 0.5}, atomic_number = 1},
+		{position = model.FracVec3{0, 0.5, 0.5}, atomic_number = 1},
+	}
+	lattice := model.Lattice {
+		a = model.CartVec3{10, 0, 0},
+		b = model.CartVec3{0, 10, 0},
+		c = model.CartVec3{0, 0, 10},
+	}
+
+	transforms := build_bond_transforms(atoms, lattice)
+	defer delete(transforms)
+
+	testing.expect_value(t, len(transforms), 1)
+	// p1 = (9.2, 5, 5); p2 = the +1 image at (10, 5, 5); bond length 0.8
+	testing.expect_value(t, transforms[0][0][3], f32(9.2))
+	testing.expect_value(t, transforms[0][1][3], f32(5))
+	testing.expect_value(t, transforms[0][2][3], f32(5))
 }
 
 @test reframe_empty_molecule_test :: proc(t: ^testing.T) {
