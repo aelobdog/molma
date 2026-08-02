@@ -14,6 +14,8 @@ Color :: struct {
 	r, g, b, a: u8,
 }
 
+FONT_LOAD_SIZE :: 64
+
 FontMetrics :: struct {
 	advance:   f32,
 	base_size: f32,
@@ -42,7 +44,8 @@ init :: proc(width, height: i32, title: cstring) -> Window {
 	font_path := slashpath.join(
 		{string(rl.GetApplicationDirectory()), "fonts", "JetBrainsMono-2.304", "JetBrainsMono-Regular.ttf"},
 	)
-	font := rl.LoadFont(strings.clone_to_cstring(font_path))
+	font := rl.LoadFontEx(strings.clone_to_cstring(font_path), FONT_LOAD_SIZE, nil, 0)
+	rl.SetTextureFilter(font.texture, .BILINEAR)
 
 	return Window {
 		width  = rl.GetScreenWidth(),
