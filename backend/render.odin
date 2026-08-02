@@ -50,8 +50,9 @@ destroy_mesh :: proc(mesh: Mesh) {
 	rl.UnloadMesh(mesh.handle)
 }
 
-create_material :: proc(color: Color) -> Material {
+create_material :: proc(window: ^Window, color: Color) -> Material {
 	material := rl.LoadMaterialDefault()
+	material.shader = window.shader
 	material.maps[rl.MaterialMapIndex.ALBEDO].color = rl.Color{color.r, color.g, color.b, color.a}
 	return Material{handle = material}
 }

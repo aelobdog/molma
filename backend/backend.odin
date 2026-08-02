@@ -34,6 +34,7 @@ Window :: struct {
 	height: i32,
 	input:  Input,
 	font:   rl.Font,
+	shader: rl.Shader,
 }
 
 init :: proc(width, height: i32, title: cstring) -> Window {
@@ -47,14 +48,24 @@ init :: proc(width, height: i32, title: cstring) -> Window {
 	font := rl.LoadFontEx(strings.clone_to_cstring(font_path), FONT_LOAD_SIZE, nil, 0)
 	rl.SetTextureFilter(font.texture, .BILINEAR)
 
+	vs := cstring(#load("../shaders/instancing.vs"))
+	fs := cstring(#load("../shaders/flat.fs"))
+	shader := rl.LoadShaderFromMemory(vs, fs)
+	shader.locs[rl.ShaderLocationIndex.MATRIX_MODEL] = rl.GetShaderLocationAttrib(
+		shader,
+		"instanceTransform",
+	)
+
 	return Window {
 		width  = rl.GetScreenWidth(),
 		height = rl.GetScreenHeight(),
 		font   = font,
+		shader = shader,
 	}
 }
 
 shutdown :: proc(window: ^Window) {
+	rl.UnloadShader(window.shader)
 	rl.UnloadFont(window.font)
 	rl.CloseWindow()
 }

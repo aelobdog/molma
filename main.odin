@@ -21,7 +21,7 @@ main :: proc() {
 	}
 	defer delete(mol.atoms)
 
-	renderer := render.init()
+	renderer := render.init(&window)
 	defer render.destroy(&renderer)
 
 	view: render.View

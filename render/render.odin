@@ -53,6 +53,7 @@ update_view :: proc(view: ^View, window_w, window_h: i32) {
 }
 
 Renderer :: struct {
+	window:         ^backend.Window,
 	synced_version: u64,
 	sphere:         backend.Mesh,
 	groups:         [dynamic]i32,
@@ -62,12 +63,14 @@ Renderer :: struct {
 	created:        [119]bool,
 }
 
-init :: proc() -> Renderer {
+init :: proc(window: ^backend.Window) -> Renderer {
 	return Renderer {
-		sphere     = backend.create_sphere(1, 16, 16),
-		groups     = make([dynamic]i32),
-		species    = make([dynamic]u16),
-		transforms = make([dynamic][]backend.Matrix4),
+		window         = window,
+		synced_version = max(u64),
+		sphere         = backend.create_sphere(1, 16, 16),
+		groups         = make([dynamic]i32),
+		species        = make([dynamic]u16),
+		transforms     = make([dynamic][]backend.Matrix4),
 	}
 }
 
@@ -150,7 +153,7 @@ ensure_material :: proc(r: ^Renderer, atomic_number: u16) {
 		return
 	}
 	e, _ := model.lookup_by_number(atomic_number)
-	r.materials[atomic_number] = backend.create_material(element_color(e))
+	r.materials[atomic_number] = backend.create_material(r.window, element_color(e))
 	r.created[atomic_number] = true
 }
 
