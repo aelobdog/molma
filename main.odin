@@ -137,6 +137,21 @@ delete_selected :: proc(app: ^App) {
 	app.sel_epoch += 1
 }
 
+labeled_input :: proc(app: ^App, layout: ^ui.Layout, label: string, buffer: ^[dynamic]u8) {
+	label_w := f32(32)
+	input_rect := ui.below(layout, 32)
+	ui.text(
+		&app.frame,
+		{input_rect.x, input_rect.y + (input_rect.h - app.frame.theme.text_size) / 2},
+		label,
+		app.frame.theme.text_size,
+		app.frame.theme.text,
+	)
+	input_rect.x += label_w
+	input_rect.w -= label_w
+	ui.text_input(&app.frame, input_rect, buffer)
+}
+
 draw_edit_panel :: proc(app: ^App) {
 	if len(app.selection) == 0 {
 		app.last_edited = -1
@@ -178,10 +193,16 @@ draw_edit_panel :: proc(app: ^App) {
 	}
 	layout := ui.make_layout(&app.frame, content)
 
-	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_x)
-	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_y)
-	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_z)
-	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_species)
+	if len(app.selection) > 1 {
+		labeled_input(app, &layout, "dx", &app.edit_x)
+		labeled_input(app, &layout, "dy", &app.edit_y)
+		labeled_input(app, &layout, "dz", &app.edit_z)
+	} else {
+		labeled_input(app, &layout, "x", &app.edit_x)
+		labeled_input(app, &layout, "y", &app.edit_y)
+		labeled_input(app, &layout, "z", &app.edit_z)
+	}
+	labeled_input(app, &layout, "el", &app.edit_species)
 	if ui.button(&app.frame, ui.below(&layout, 36), "Apply") {
 		apply_edits(app)
 	}
