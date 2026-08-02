@@ -54,33 +54,78 @@ set_buffer :: proc(buffer: ^[dynamic]u8, s: string) {
 }
 
 refill_edit_buffers :: proc(app: ^App, primary: i32) {
-	atom := app.mol.atoms[primary]
-	position := model.Vec3(model.cartesian(app.mol.lattice, atom.position))
-	e, _ := model.lookup_by_number(atom.atomic_number)
-
-	set_buffer(&app.edit_x, fmt.tprintf("%.4f", position[0]))
-	set_buffer(&app.edit_y, fmt.tprintf("%.4f", position[1]))
-	set_buffer(&app.edit_z, fmt.tprintf("%.4f", position[2]))
-	set_buffer(&app.edit_species, e.symbol)
+	if len(app.selection) > 1 {
+		set_buffer(&app.edit_x, "0.0000")
+		set_buffer(&app.edit_y, "0.0000")
+		set_buffer(&app.edit_z, "0.0000")
+	} else {
+		atom := app.mol.atoms[primary]
+		position := model.Vec3(model.cartesian(app.mol.lattice, atom.position))
+		set_buffer(&app.edit_x, fmt.tprintf("%.4f", position[0]))
+		set_buffer(&app.edit_y, fmt.tprintf("%.4f", position[1]))
+		set_buffer(&app.edit_z, fmt.tprintf("%.4f", position[2]))
+	}
+	set_buffer(&app.edit_species, species_symbol(app))
 }
 
-apply_edits :: proc(app: ^App, primary: i32) {
+species_symbol :: proc(app: ^App) -> string {
+	first := app.mol.atoms[app.selection[0]].atomic_number
+	for idx in app.selection[1:] {
+		if app.mol.atoms[idx].atomic_number != first {
+			return ""
+		}
+	}
+	e, _ := model.lookup_by_number(first)
+	return e.symbol
+}
+
+apply_edits :: proc(app: ^App) {
+	if len(app.selection) > 1 {
+		apply_delta(app)
+	} else {
+		apply_absolute(app, i32(app.selection[0]))
+	}
+
+	symbol := strings.to_lower(string(app.edit_species[:len(app.edit_species) - 1]))
+	if _, n := model.lookup_by_symbol(symbol); n != 0 {
+		for idx in app.selection {
+			if app.mol.atoms[idx].atomic_number != n {
+				model.set_atom_species(&app.mol, idx, n)
+			}
+		}
+	}
+	refill_edit_buffers(app, i32(app.selection[0]))
+}
+
+apply_absolute :: proc(app: ^App, primary: i32) {
 	cart: model.CartVec3
 	okx, oky, okz: bool
 	cart[0], okx = strconv.parse_f32(string(app.edit_x[:len(app.edit_x) - 1]))
 	cart[1], oky = strconv.parse_f32(string(app.edit_y[:len(app.edit_y) - 1]))
 	cart[2], okz = strconv.parse_f32(string(app.edit_z[:len(app.edit_z) - 1]))
-	if okx && oky && okz {
-		if frac, ok := model.fractional(app.mol.lattice, cart); ok {
-			model.set_atom_position(&app.mol, model.AtomIndex(primary), frac)
+	if !(okx && oky && okz) {
+		return
+	}
+	if frac, ok := model.fractional(app.mol.lattice, cart); ok {
+		model.set_atom_position(&app.mol, model.AtomIndex(primary), frac)
+	}
+}
+
+apply_delta :: proc(app: ^App) {
+	delta: model.CartVec3
+	okx, oky, okz: bool
+	delta[0], okx = strconv.parse_f32(string(app.edit_x[:len(app.edit_x) - 1]))
+	delta[1], oky = strconv.parse_f32(string(app.edit_y[:len(app.edit_y) - 1]))
+	delta[2], okz = strconv.parse_f32(string(app.edit_z[:len(app.edit_z) - 1]))
+	if !(okx && oky && okz) {
+		return
+	}
+	for idx in app.selection {
+		current := model.cartesian(app.mol.lattice, app.mol.atoms[idx].position)
+		if frac, ok := model.fractional(app.mol.lattice, current + delta); ok {
+			model.set_atom_position(&app.mol, idx, frac)
 		}
 	}
-
-	symbol := strings.to_lower(string(app.edit_species[:len(app.edit_species) - 1]))
-	if _, n := model.lookup_by_symbol(symbol); n != 0 {
-		model.set_atom_species(&app.mol, model.AtomIndex(primary), n)
-	}
-	refill_edit_buffers(app, primary)
 }
 
 delete_selected :: proc(app: ^App) {
@@ -112,7 +157,13 @@ draw_edit_panel :: proc(app: ^App) {
 		return
 	}
 
-	open := ui.begin_floating_panel(&app.frame, &app.edit_rect, "Atom")
+	title_buf: [32]u8
+	title: string = "Atom"
+	if len(app.selection) > 1 {
+		title = fmt.bprintf(title_buf[:], "%d atoms (delta)", len(app.selection))
+	}
+
+	open := ui.begin_floating_panel(&app.frame, &app.edit_rect, title)
 	defer ui.end_floating_panel(&app.frame)
 	if !open {
 		app.panel_open = false
@@ -132,7 +183,7 @@ draw_edit_panel :: proc(app: ^App) {
 	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_z)
 	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_species)
 	if ui.button(&app.frame, ui.below(&layout, 36), "Apply") {
-		apply_edits(app, primary)
+		apply_edits(app)
 	}
 	if ui.button(&app.frame, ui.below(&layout, 36), "Delete") {
 		delete_selected(app)
