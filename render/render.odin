@@ -54,7 +54,7 @@ reframe :: proc(view: ^View, mol: ^model.Molecule, window_w, window_h: i32) {
 
 orbit :: proc(view: ^View, dx, dy: f32) {
 	view.yaw -= dx * 0.005
-	view.pitch -= dy * 0.005
+	view.pitch += dy * 0.005
 	view.pitch = clamp(view.pitch, -1.55, 1.55)
 }
 
