@@ -6,6 +6,7 @@
 package render
 
 import "../backend"
+import "core:math"
 import "core:math/linalg"
 import "../model"
 
@@ -18,6 +19,9 @@ BOND_COLOR :: backend.Color{0xc8, 0xc8, 0xc8, 0xff}
 View :: struct {
 	origin:       [3]f32,
 	max_distance: f32,
+	yaw:          f32,
+	pitch:        f32,
+	zoom:         f32,
 	camera:       backend.Camera,
 }
 
@@ -42,17 +46,37 @@ reframe :: proc(view: ^View, mol: ^model.Molecule, window_w, window_h: i32) {
 		}
 		view.max_distance = max_dist
 	}
+	view.yaw = 0
+	view.pitch = 0
+	view.zoom = 1
 	update_view(view, window_w, window_h)
+}
+
+orbit :: proc(view: ^View, dx, dy: f32) {
+	view.yaw -= dx * 0.005
+	view.pitch -= dy * 0.005
+	view.pitch = clamp(view.pitch, -1.55, 1.55)
+}
+
+zoom :: proc(view: ^View, wheel: f32) {
+	view.zoom *= 1 - wheel * 0.1
+	view.zoom = clamp(view.zoom, 0.1, 50)
 }
 
 update_view :: proc(view: ^View, window_w, window_h: i32) {
 	aspect := f32(window_w) / max(f32(window_h), 1)
-	vertical := 5 * view.max_distance
+	distance := 5 * view.max_distance * view.zoom
+	cos_pitch := math.cos(view.pitch)
+
 	view.camera = backend.Camera {
-		position = {view.origin[0], view.origin[1], view.origin[2] + 5 * view.max_distance},
+		position = {
+			view.origin[0] + distance * cos_pitch * math.sin(view.yaw),
+			view.origin[1] + distance * math.sin(view.pitch),
+			view.origin[2] + distance * cos_pitch * math.cos(view.yaw),
+		},
 		target   = view.origin,
 		up       = {0, 1, 0},
-		fovy     = max(vertical, vertical / aspect),
+		fovy     = 5 * view.max_distance * view.zoom,
 	}
 }
 

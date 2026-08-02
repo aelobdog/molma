@@ -109,6 +109,44 @@ import "../model"
 	testing.expect_value(t, len(transforms), 0)
 }
 
+@test orbit_and_zoom_affect_camera_test :: proc(t: ^testing.T) {
+	view: View
+	mol := model.Molecule{}
+	reframe(&view, &mol, 800, 600)
+	view.origin = {1, 2, 3}
+	view.max_distance = 2
+
+	// default: camera above the origin along +z
+	update_view(&view, 800, 600)
+	testing.expect_value(t, view.camera.position, [3]f32{1, 2, 13})
+	testing.expect_value(t, view.camera.fovy, f32(10))
+
+	orbit(&view, 0, 0) // no-op drag
+	testing.expect_value(t, view.yaw, f32(0))
+
+	zoom(&view, 2)
+	testing.expect_value(t, view.zoom, f32(0.8))
+	update_view(&view, 800, 600)
+	testing.expect_value(t, view.camera.fovy, f32(8))
+}
+
+@test orbit_rotates_camera_position_test :: proc(t: ^testing.T) {
+	view: View
+	view.origin = {0, 0, 0}
+	view.max_distance = 2
+	view.zoom = 1
+	view.yaw = math.PI / 2
+	update_view(&view, 800, 600)
+
+	// yaw 90 degrees: camera swings to +x
+	if math.abs(view.camera.position[0] - 10) > 1e-4 {
+		testing.expect(t, false, "camera should orbit to +x")
+	}
+	if math.abs(view.camera.position[2]) > 1e-4 {
+		testing.expect(t, false, "z should be zero after 90 degree yaw")
+	}
+}
+
 @test reframe_empty_molecule_test :: proc(t: ^testing.T) {
 	view: View
 	mol := model.Molecule{}

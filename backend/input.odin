@@ -32,6 +32,7 @@ Key :: enum u8 {
 
 Input :: struct {
 	mouse_pos:      [2]f32,
+	mouse_delta:    [2]f32,
 	mouse_wheel:    f32,
 	mouse_down:     bit_set[MouseButton],
 	mouse_pressed:  bit_set[MouseButton],
@@ -63,6 +64,8 @@ refresh_input :: proc(window: ^Window) {
 
 	pos := rl.GetMousePosition()
 	input.mouse_pos = [2]f32{pos.x, pos.y}
+	input.mouse_delta = input.mouse_pos - window.prev_mouse
+	window.prev_mouse = input.mouse_pos
 	input.mouse_wheel = rl.GetMouseWheelMove()
 
 	input.mouse_down = {}

@@ -37,6 +37,7 @@ Window :: struct {
 	shader:      rl.Shader,
 	dropped:     [1024]u8,
 	dropped_len: int,
+	prev_mouse:  [2]f32,
 }
 
 init :: proc(width, height: i32, title: cstring) -> Window {

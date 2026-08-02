@@ -53,6 +53,12 @@ main :: proc() {
 		}
 
 		render.sync(&renderer, &mol)
+		if .RIGHT in window.input.mouse_down {
+			render.orbit(&view, window.input.mouse_delta[0], window.input.mouse_delta[1])
+		}
+		if window.input.mouse_wheel != 0 {
+			render.zoom(&view, window.input.mouse_wheel)
+		}
 		render.update_view(&view, window.width, window.height)
 		render.draw(&renderer, &view)
 
