@@ -28,7 +28,7 @@ execute_commands :: proc(window: ^Window, commands: []draw.DrawCommand) {
 					cstring(raw_data(c.text)),
 					rl.Vector2{c.position[0], c.position[1]},
 					c.size,
-					2.0,
+					c.spacing,
 					to_rl_color(c.color),
 				)
 			}

@@ -17,6 +17,7 @@ Theme :: struct {
 	input_focus:  draw.Color,
 	text:         draw.Color,
 	text_size:    f32,
+	text_spacing: f32,
 	padding:      f32,
 }
 
@@ -29,6 +30,7 @@ default_theme :: proc() -> Theme {
 		input_focus  = draw.Color{0x24, 0x24, 0x24, 0xff},
 		text         = draw.Color{0xee, 0xee, 0xee, 0xff},
 		text_size    = 18,
+		text_spacing = 2,
 		padding      = 8,
 	}
 }
@@ -57,11 +59,20 @@ fill_rect :: proc(frame: ^Frame, rect: draw.Rect, color: draw.Color) {
 }
 
 text :: proc(frame: ^Frame, position: [2]f32, s: string, size: f32, color: draw.Color) {
-	append(frame.commands, draw.Text{position = position, text = s, size = size, color = color})
+	append(
+		frame.commands,
+		draw.Text {
+			position = position,
+			text     = s,
+			size     = size,
+			spacing  = frame.theme.text_spacing,
+			color    = color,
+		},
+	)
 }
 
 text_width :: proc(frame: ^Frame, s: string, size: f32) -> f32 {
-	return f32(len(s)) * frame.font.advance * size / frame.font.base_size
+	return f32(len(s)) * (frame.font.advance + frame.theme.text_spacing) * size / frame.font.base_size
 }
 
 begin_panel :: proc(frame: ^Frame, rect: draw.Rect) -> bool {

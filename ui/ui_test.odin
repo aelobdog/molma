@@ -203,13 +203,47 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	testing.expect_value(t, frame.focus, draw.Rect{})
 }
 
-@test text_width_scales_with_size_test :: proc(t: ^testing.T) {
+@test text_width_counts_spacing_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)
 	frame := test_frame(&commands)
+	begin_frame(&frame, &commands, backend.Input{})
+
+	// advance 10, base 10, theme spacing 2: width = len * (10 + 2) * size / 10
+	testing.expect_value(t, text_width(&frame, "abcd", 10), f32(48))
+	testing.expect_value(t, text_width(&frame, "ab", 20), f32(48))
+	testing.expect_value(t, text_width(&frame, "", 10), f32(0))
+}
+
+@test caret_drawn_when_focused_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	buffer := make([dynamic]u8)
+	append(&buffer, 0)
+	defer delete(buffer)
+	rect := draw.Rect{0, 0, 200, 40}
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, mouse_pressed = {.LEFT}})
+	text_input(&frame, rect, &buffer)
+
+	testing.expect_value(t, len(commands), 3)
+	caret, is_fill := commands[2].(draw.FillRect)
+	testing.expect(t, is_fill)
+	testing.expect_value(t, caret.rect.w, f32(2))
+}
+
+@test caret_not_drawn_when_unfocused_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	buffer := make([dynamic]u8)
+	append(&buffer, 0)
+	defer delete(buffer)
+	rect := draw.Rect{0, 0, 200, 40}
 
 	begin_frame(&frame, &commands, backend.Input{})
-	testing.expect_value(t, text_width(&frame, "abcd", 10), f32(40))
-	testing.expect_value(t, text_width(&frame, "ab", 20), f32(40))
-	testing.expect_value(t, text_width(&frame, "", 10), f32(0))
+	text_input(&frame, rect, &buffer)
+
+	testing.expect_value(t, len(commands), 2)
 }

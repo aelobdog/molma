@@ -28,6 +28,7 @@ Text :: struct {
 	position: [2]f32,
 	text:     string,
 	size:     f32,
+	spacing:  f32,
 	color:    Color,
 }
 
