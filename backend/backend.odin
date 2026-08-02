@@ -14,6 +14,19 @@ Color :: struct {
 	r, g, b, a: u8,
 }
 
+FontMetrics :: struct {
+	advance:   f32,
+	base_size: f32,
+}
+
+font_metrics :: proc(window: ^Window) -> FontMetrics {
+	advance := f32(10)
+	if window.font.glyphCount > 0 {
+		advance = f32(window.font.glyphs[0].advanceX)
+	}
+	return FontMetrics{advance = advance, base_size = f32(window.font.baseSize)}
+}
+
 Window :: struct {
 	width:  i32,
 	height: i32,

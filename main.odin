@@ -4,20 +4,38 @@
 package main
 
 import "backend"
+import "core:fmt"
 import "draw"
+import "ui"
 
 main :: proc() {
 	window := backend.init(1280, 800, "Molma")
 	defer backend.shutdown(&window)
+
+	theme := ui.default_theme()
+	font := backend.font_metrics(&window)
+	count := 0
 
 	for !backend.should_close(&window) {
 		backend.begin_frame(&window)
 		backend.clear(&window, backend.Color{0x33, 0x33, 0x33, 0xff})
 
 		commands := make([dynamic]draw.DrawCommand, context.temp_allocator)
-		append(&commands, draw.FillRect{rect = {0, 0, 200, 100}, color = {60, 120, 200, 255}})
-		append(&commands, draw.Line{p0 = {0, 0}, p1 = {200, 100}, width = 2, color = {255, 255, 255, 255}})
-		append(&commands, draw.Text{position = {10, 10}, text = "Molma", size = 32, color = {255, 255, 255, 255}})
+		frame := ui.Frame {commands = &commands, input = window.input, theme = theme, font = font}
+
+		if ui.begin_panel(&frame, draw.Rect{20, 20, 240, 300}) {
+			if ui.button(&frame, draw.Rect{30, 30, 220, 40}, "Add") {
+				count += 1
+			}
+			if ui.button(&frame, draw.Rect{30, 80, 220, 40}, "Reset") {
+				count = 0
+			}
+			ui.end_panel(&frame)
+		}
+
+		buf: [32]u8
+		s := fmt.bprintf(buf[:], "count: %d", count)
+		ui.text(&frame, {280, 30}, s, 24, theme.text)
 
 		backend.execute_commands(&window, commands[:])
 		backend.end_frame(&window)
