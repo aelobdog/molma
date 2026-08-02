@@ -19,6 +19,7 @@ Theme :: struct {
 	text_size:    f32,
 	text_spacing: f32,
 	padding:      f32,
+	title_height: f32,
 }
 
 default_theme :: proc() -> Theme {
@@ -32,6 +33,7 @@ default_theme :: proc() -> Theme {
 		text_size    = 18,
 		text_spacing = 2,
 		padding      = 8,
+		title_height = 24,
 	}
 }
 
@@ -86,6 +88,43 @@ begin_panel :: proc(frame: ^Frame, rect: draw.Rect) -> bool {
 }
 
 end_panel :: proc(frame: ^Frame) {
+	append(frame.commands, draw.Clip{push = false})
+}
+
+// begin_floating_panel draws a titled, draggable panel; rect is
+// app-owned and mutated by dragging. Returns false when closed.
+begin_floating_panel :: proc(frame: ^Frame, rect: ^draw.Rect, title: string) -> bool {
+	title_h := frame.theme.title_height
+	title_rect := draw.Rect{rect.x, rect.y, rect.w, title_h}
+	close_rect := draw.Rect{rect.x + rect.w - title_h, rect.y, title_h, title_h}
+
+	if .LEFT in frame.input.mouse_pressed && point_in_rect(frame.input.mouse_pos, title_rect) {
+		frame.active = true
+		frame.active_rect = title_rect
+	}
+	if frame.active && frame.active_rect == title_rect && .LEFT in frame.input.mouse_down {
+		rect.x += frame.input.mouse_delta[0]
+		rect.y += frame.input.mouse_delta[1]
+	}
+	if .LEFT in frame.input.mouse_released && frame.active_rect == title_rect {
+		frame.active = false
+	}
+
+	fill_rect(frame, rect^, frame.theme.panel)
+	text(
+		frame,
+		{rect.x + frame.theme.padding, rect.y + (title_h - frame.theme.text_size) / 2},
+		title,
+		frame.theme.text_size,
+		frame.theme.text,
+	)
+	closed := button(frame, close_rect, "x")
+
+	append(frame.commands, draw.Clip{rect = {rect.x, rect.y + title_h, rect.w, rect.h - title_h}, push = true})
+	return !closed
+}
+
+end_floating_panel :: proc(frame: ^Frame) {
 	append(frame.commands, draw.Clip{push = false})
 }
 

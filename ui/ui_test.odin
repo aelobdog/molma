@@ -80,6 +80,50 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	testing.expect_value(t, fill.color, frame.theme.button_hover)
 }
 
+@test floating_panel_drags_by_title_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	rect := draw.Rect{100, 100, 200, 200}
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {150, 105}, mouse_pressed = {.LEFT}})
+	open := begin_floating_panel(&frame, &rect, "Atom")
+	end_floating_panel(&frame)
+	testing.expect(t, open)
+
+	begin_frame(
+		&frame,
+		&commands,
+		backend.Input{mouse_pos = {160, 115}, mouse_down = {.LEFT}, mouse_delta = {10, 10}},
+	)
+	begin_floating_panel(&frame, &rect, "Atom")
+	end_floating_panel(&frame)
+	testing.expect_value(t, rect, draw.Rect{110, 110, 200, 200})
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {160, 115}, mouse_released = {.LEFT}})
+	begin_floating_panel(&frame, &rect, "Atom")
+	end_floating_panel(&frame)
+	testing.expect_value(t, rect, draw.Rect{110, 110, 200, 200})
+}
+
+@test floating_panel_close_button_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	rect := draw.Rect{100, 100, 200, 200}
+	close_center := [2]f32{100 + 200 - 12, 100 + 12}
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = close_center, mouse_pressed = {.LEFT}})
+	open := begin_floating_panel(&frame, &rect, "Atom")
+	end_floating_panel(&frame)
+	testing.expect(t, open, "no close on press")
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = close_center, mouse_released = {.LEFT}})
+	open = begin_floating_panel(&frame, &rect, "Atom")
+	end_floating_panel(&frame)
+	testing.expect(t, !open, "close on release")
+}
+
 @test panel_emits_fill_and_clip_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)
