@@ -56,11 +56,6 @@ update_view :: proc(view: ^View, window_w, window_h: i32) {
 	}
 }
 
-Ghost :: struct {
-	species:   u16,
-	transform: backend.Matrix4,
-}
-
 Renderer :: struct {
 	window:          ^backend.Window,
 	synced_version:  u64,
@@ -71,7 +66,6 @@ Renderer :: struct {
 	species:         [dynamic]u16,
 	transforms:      [dynamic][]backend.Matrix4,
 	bond_transforms: [dynamic]backend.Matrix4,
-	ghosts:          [dynamic]Ghost,
 	lattice_lines:   [12][2][3]f32,
 	materials:       [119]backend.Material,
 	created:         [119]bool,
@@ -88,7 +82,6 @@ init :: proc(window: ^backend.Window) -> Renderer {
 		species        = make([dynamic]u16),
 		transforms     = make([dynamic][]backend.Matrix4),
 		bond_transforms = make([dynamic]backend.Matrix4),
-		ghosts          = make([dynamic]Ghost),
 	}
 }
 
@@ -108,7 +101,6 @@ destroy :: proc(r: ^Renderer) {
 	}
 	delete(r.transforms)
 	delete(r.bond_transforms)
-	delete(r.ghosts)
 }
 
 sync :: proc(r: ^Renderer, mol: ^model.Molecule) {
@@ -138,17 +130,8 @@ sync :: proc(r: ^Renderer, mol: ^model.Molecule) {
 		ensure_material(r, species[g])
 	}
 
-	clear(&r.bond_transforms)
-	clear(&r.ghosts)
-	bond_transforms, ghosts := build_bond_data(mol.atoms[:], mol.lattice)
-	defer delete(bond_transforms)
-	defer delete(ghosts)
-	for transform in bond_transforms {
-		append(&r.bond_transforms, transform)
-	}
-	for ghost in ghosts {
-		append(&r.ghosts, ghost)
-	}
+	delete(r.bond_transforms)
+	r.bond_transforms = build_bond_transforms(mol.atoms[:], mol.lattice)
 
 	o := [3]f32{0, 0, 0}
 	a := model.Vec3(mol.lattice.a)
@@ -165,16 +148,15 @@ sync :: proc(r: ^Renderer, mol: ^model.Molecule) {
 	r.synced_version = mol.version
 }
 
-build_bond_data :: proc(
-	atoms: []model.Atom,
-	lattice: model.Lattice,
-) -> (transforms: [dynamic]backend.Matrix4, ghosts: [dynamic]Ghost) {
-	transforms = make([dynamic]backend.Matrix4)
-	ghosts = make([dynamic]Ghost)
+build_bond_transforms :: proc(atoms: []model.Atom, lattice: model.Lattice) -> [dynamic]backend.Matrix4 {
+	transforms := make([dynamic]backend.Matrix4)
 	zero_shift := [3]i8{0, 0, 0}
 	bonds := model.compute_bonds(atoms, lattice)
 	defer delete(bonds)
 	for bond in bonds {
+		if bond.shift != zero_shift {
+			continue
+		}
 		p1 := model.Vec3(model.cartesian(lattice, atoms[bond.a].position))
 		shift := model.FracVec3{f32(bond.shift[0]), f32(bond.shift[1]), f32(bond.shift[2])}
 		p2 := model.Vec3(model.cartesian(lattice, atoms[bond.b].position + shift))
@@ -182,16 +164,8 @@ build_bond_data :: proc(
 			continue
 		}
 		append(&transforms, backend.make_cylinder_transform(p1, p2, BOND_RADIUS))
-		if bond.shift != zero_shift {
-			e, _ := model.lookup_by_number(atoms[bond.b].atomic_number)
-			radius := e.cov_radius_ang * RADIUS_PCT
-			append(&ghosts, Ghost {
-				species   = atoms[bond.b].atomic_number,
-				transform = backend.make_transform(p2, {radius, radius, radius}),
-			})
-		}
 	}
-	return
+	return transforms
 }
 
 build_group_transforms :: proc(
@@ -254,10 +228,6 @@ draw :: proc(r: ^Renderer, view: ^View) {
 	}
 	if len(r.bond_transforms) > 0 {
 		backend.draw_instanced(r.cylinder, r.bond_material, r.bond_transforms[:])
-	}
-	for ghost in r.ghosts {
-		t := [1]backend.Matrix4{ghost.transform}
-		backend.draw_instanced(r.sphere, r.materials[ghost.species], t[:])
 	}
 	for g in 0 ..< len(r.groups) {
 		backend.draw_instanced(r.sphere, r.materials[r.species[g]], r.transforms[g])
