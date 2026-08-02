@@ -124,6 +124,31 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	testing.expect(t, !open, "close on release")
 }
 
+@test ui_hover_marks_pointer_over_widgets_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}})
+	testing.expect(t, !frame.ui_hover, "no widgets, no hover")
+	button(&frame, draw.Rect{0, 0, 100, 40}, "B")
+	testing.expect(t, frame.ui_hover, "button under the pointer")
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {500, 500}})
+	testing.expect(t, !frame.ui_hover, "reset per frame")
+}
+
+@test floating_panel_marks_hover_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {150, 150}})
+	begin_floating_panel(&frame, &draw.Rect{100, 100, 200, 200}, "Atom")
+	end_floating_panel(&frame)
+	testing.expect(t, frame.ui_hover, "pointer inside the panel")
+}
+
 @test panel_emits_fill_and_clip_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)

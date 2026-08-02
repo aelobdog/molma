@@ -189,36 +189,37 @@ main :: proc() {
 		}
 		render.update_view(&app.view, window.width, window.height)
 
-		app.hover = -1
-		if idx, picked := render.pick_atom(
-			&app.mol,
-			app.view.camera,
-			window.width,
-			window.height,
-			window.input.mouse_pos,
-		); picked {
-			app.hover = i32(idx)
-		}
+		commands := make([dynamic]draw.DrawCommand, context.temp_allocator)
+		ui.begin_frame(&app.frame, &commands, window.input)
+		draw_edit_panel(&app)
 
-		if .LEFT in window.input.mouse_pressed {
-			if app.hover >= 0 {
-				if .SHIFT in window.input.mods {
-					toggle_selection(&app, model.AtomIndex(app.hover))
-				} else {
+		if !app.frame.ui_hover {
+			app.hover = -1
+			if idx, picked := render.pick_atom(
+				&app.mol,
+				app.view.camera,
+				window.width,
+				window.height,
+				window.input.mouse_pos,
+			); picked {
+				app.hover = i32(idx)
+			}
+
+			if .LEFT in window.input.mouse_pressed {
+				if app.hover >= 0 {
+					if .SHIFT in window.input.mods {
+						toggle_selection(&app, model.AtomIndex(app.hover))
+					} else {
+						clear(&app.selection)
+						append(&app.selection, model.AtomIndex(app.hover))
+					}
+				} else if !(.SHIFT in window.input.mods) {
 					clear(&app.selection)
-					append(&app.selection, model.AtomIndex(app.hover))
 				}
-			} else if !(.SHIFT in window.input.mods) {
-				clear(&app.selection)
 			}
 		}
 
 		render.draw(&app.renderer, &app.view, &app.mol, app.hover, app.selection[:])
-
-		commands := make([dynamic]draw.DrawCommand, context.temp_allocator)
-		ui.begin_frame(&app.frame, &commands, window.input)
-
-		draw_edit_panel(&app)
 
 		backend.execute_commands(&window, commands[:])
 		backend.end_frame(&window)

@@ -45,11 +45,13 @@ Frame :: struct {
 	active:      bool,
 	active_rect: draw.Rect,
 	focus:       draw.Rect,
+	ui_hover:    bool,
 }
 
 begin_frame :: proc(frame: ^Frame, commands: ^[dynamic]draw.DrawCommand, input: backend.Input) {
 	frame.commands = commands
 	frame.input = input
+	frame.ui_hover = false
 }
 
 point_in_rect :: proc(p: [2]f32, rect: draw.Rect) -> bool {
@@ -97,6 +99,10 @@ begin_floating_panel :: proc(frame: ^Frame, rect: ^draw.Rect, title: string) -> 
 	title_h := frame.theme.title_height
 	title_rect := draw.Rect{rect.x, rect.y, rect.w, title_h}
 	close_rect := draw.Rect{rect.x + rect.w - title_h, rect.y, title_h, title_h}
+
+	if point_in_rect(frame.input.mouse_pos, rect^) {
+		frame.ui_hover = true
+	}
 
 	if .LEFT in frame.input.mouse_pressed && point_in_rect(frame.input.mouse_pos, title_rect) {
 		frame.active = true
@@ -161,6 +167,9 @@ right :: proc(layout: ^Layout, width, height: f32) -> draw.Rect {
 
 button :: proc(frame: ^Frame, rect: draw.Rect, label: string) -> bool {
 	hovered := point_in_rect(frame.input.mouse_pos, rect)
+	if hovered {
+		frame.ui_hover = true
+	}
 	if .LEFT in frame.input.mouse_pressed && hovered {
 		frame.active = true
 		frame.active_rect = rect
@@ -194,6 +203,9 @@ button :: proc(frame: ^Frame, rect: draw.Rect, label: string) -> bool {
 // text changed this frame.
 text_input :: proc(frame: ^Frame, rect: draw.Rect, buffer: ^[dynamic]u8) -> bool {
 	hovered := point_in_rect(frame.input.mouse_pos, rect)
+	if hovered {
+		frame.ui_hover = true
+	}
 	if .LEFT in frame.input.mouse_pressed {
 		if hovered {
 			frame.focus = rect
