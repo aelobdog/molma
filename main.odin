@@ -60,25 +60,23 @@ refill_edit_buffers :: proc(app: ^App, primary: i32) {
 	set_buffer(&app.edit_species, e.symbol)
 }
 
-commit_position :: proc(app: ^App, primary: i32) {
+apply_edits :: proc(app: ^App, primary: i32) {
 	cart: model.CartVec3
 	okx, oky, okz: bool
 	cart[0], okx = strconv.parse_f32(string(app.edit_x[:len(app.edit_x) - 1]))
 	cart[1], oky = strconv.parse_f32(string(app.edit_y[:len(app.edit_y) - 1]))
 	cart[2], okz = strconv.parse_f32(string(app.edit_z[:len(app.edit_z) - 1]))
-	if !(okx && oky && okz) {
-		return
+	if okx && oky && okz {
+		if frac, ok := model.fractional(app.mol.lattice, cart); ok {
+			model.set_atom_position(&app.mol, model.AtomIndex(primary), frac)
+		}
 	}
-	if frac, ok := model.fractional(app.mol.lattice, cart); ok {
-		model.set_atom_position(&app.mol, model.AtomIndex(primary), frac)
-	}
-}
 
-commit_species :: proc(app: ^App, primary: i32) {
 	symbol := strings.to_lower(string(app.edit_species[:len(app.edit_species) - 1]))
 	if _, n := model.lookup_by_symbol(symbol); n != 0 {
 		model.set_atom_species(&app.mol, model.AtomIndex(primary), n)
 	}
+	refill_edit_buffers(app, primary)
 }
 
 delete_selected :: proc(app: ^App) {
@@ -101,10 +99,11 @@ draw_edit_panel :: proc(app: ^App) {
 		app.last_edited = primary
 	}
 
-	if !ui.begin_floating_panel(&app.frame, &app.edit_rect, "Atom") {
+	open := ui.begin_floating_panel(&app.frame, &app.edit_rect, "Atom")
+	defer ui.end_floating_panel(&app.frame)
+	if !open {
 		return
 	}
-	defer ui.end_floating_panel(&app.frame)
 
 	content := draw.Rect {
 		app.edit_rect.x,
@@ -114,13 +113,12 @@ draw_edit_panel :: proc(app: ^App) {
 	}
 	layout := ui.make_layout(&app.frame, content)
 
-	if ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_x) ||
-	   ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_y) ||
-	   ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_z) {
-		commit_position(app, primary)
-	}
-	if ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_species) {
-		commit_species(app, primary)
+	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_x)
+	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_y)
+	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_z)
+	ui.text_input(&app.frame, ui.below(&layout, 32), &app.edit_species)
+	if ui.button(&app.frame, ui.below(&layout, 36), "Apply") {
+		apply_edits(app, primary)
 	}
 	if ui.button(&app.frame, ui.below(&layout, 36), "Delete") {
 		delete_selected(app)

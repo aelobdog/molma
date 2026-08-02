@@ -46,6 +46,7 @@ Frame :: struct {
 	active_rect: draw.Rect,
 	focus:       draw.Rect,
 	ui_hover:    bool,
+	drag:        bool,
 }
 
 begin_frame :: proc(frame: ^Frame, commands: ^[dynamic]draw.DrawCommand, input: backend.Input) {
@@ -104,16 +105,16 @@ begin_floating_panel :: proc(frame: ^Frame, rect: ^draw.Rect, title: string) -> 
 		frame.ui_hover = true
 	}
 
-	if .LEFT in frame.input.mouse_pressed && point_in_rect(frame.input.mouse_pos, title_rect) {
-		frame.active = true
-		frame.active_rect = title_rect
+	pressing_close := .LEFT in frame.input.mouse_pressed && point_in_rect(frame.input.mouse_pos, close_rect)
+	if .LEFT in frame.input.mouse_pressed && point_in_rect(frame.input.mouse_pos, title_rect) && !pressing_close {
+		frame.drag = true
 	}
-	if frame.active && frame.active_rect == title_rect && .LEFT in frame.input.mouse_down {
+	if frame.drag && .LEFT in frame.input.mouse_down {
 		rect.x += frame.input.mouse_delta[0]
 		rect.y += frame.input.mouse_delta[1]
 	}
-	if .LEFT in frame.input.mouse_released && frame.active_rect == title_rect {
-		frame.active = false
+	if .LEFT in frame.input.mouse_released && frame.drag {
+		frame.drag = false
 	}
 
 	fill_rect(frame, rect^, frame.theme.panel)

@@ -86,7 +86,11 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	frame := test_frame(&commands)
 	rect := draw.Rect{100, 100, 200, 200}
 
-	begin_frame(&frame, &commands, backend.Input{mouse_pos = {150, 105}, mouse_pressed = {.LEFT}})
+	begin_frame(
+		&frame,
+		&commands,
+		backend.Input{mouse_pos = {150, 105}, mouse_pressed = {.LEFT}, mouse_down = {.LEFT}},
+	)
 	open := begin_floating_panel(&frame, &rect, "Atom")
 	end_floating_panel(&frame)
 	testing.expect(t, open)
@@ -100,10 +104,14 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	end_floating_panel(&frame)
 	testing.expect_value(t, rect, draw.Rect{110, 110, 200, 200})
 
-	begin_frame(&frame, &commands, backend.Input{mouse_pos = {160, 115}, mouse_released = {.LEFT}})
+	begin_frame(
+		&frame,
+		&commands,
+		backend.Input{mouse_pos = {170, 125}, mouse_down = {.LEFT}, mouse_delta = {10, 10}},
+	)
 	begin_floating_panel(&frame, &rect, "Atom")
 	end_floating_panel(&frame)
-	testing.expect_value(t, rect, draw.Rect{110, 110, 200, 200})
+	testing.expect_value(t, rect, draw.Rect{120, 120, 200, 200})
 }
 
 @test floating_panel_close_button_test :: proc(t: ^testing.T) {
