@@ -209,9 +209,9 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	frame := test_frame(&commands)
 	begin_frame(&frame, &commands, backend.Input{})
 
-	// advance 10, base 10, theme spacing 2: width = len * (10 + 2) * size / 10
-	testing.expect_value(t, text_width(&frame, "abcd", 10), f32(48))
-	testing.expect_value(t, text_width(&frame, "ab", 20), f32(48))
+	// advance 10, base 10, theme spacing 2: width = n*10*size/10 + (n-1)*2
+	testing.expect_value(t, text_width(&frame, "abcd", 10), f32(46))
+	testing.expect_value(t, text_width(&frame, "ab", 20), f32(42))
 	testing.expect_value(t, text_width(&frame, "", 10), f32(0))
 }
 

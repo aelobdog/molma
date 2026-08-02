@@ -72,7 +72,11 @@ text :: proc(frame: ^Frame, position: [2]f32, s: string, size: f32, color: draw.
 }
 
 text_width :: proc(frame: ^Frame, s: string, size: f32) -> f32 {
-	return f32(len(s)) * (frame.font.advance + frame.theme.text_spacing) * size / frame.font.base_size
+	n := len(s)
+	if n == 0 {
+		return 0
+	}
+	return f32(n) * frame.font.advance * size / frame.font.base_size + f32(n - 1) * frame.theme.text_spacing
 }
 
 begin_panel :: proc(frame: ^Frame, rect: draw.Rect) -> bool {
