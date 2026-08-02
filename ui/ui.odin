@@ -79,7 +79,9 @@ button :: proc(frame: ^Frame, rect: draw.Rect, label: string) -> bool {
 	clicked := false
 	if .LEFT in frame.input.mouse_released {
 		clicked = frame.active && rect == frame.active_rect && hovered
-		frame.active = false
+		if rect == frame.active_rect {
+			frame.active = false
+		}
 	}
 
 	color := frame.theme.button

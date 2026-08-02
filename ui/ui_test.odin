@@ -27,6 +27,23 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	testing.expect(t, button(&frame, rect, "Test"), "click on release, same persistent frame")
 }
 
+@test second_button_clicked_after_first_processed_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+
+	add_rect := draw.Rect{0, 0, 100, 40}
+	reset_rect := draw.Rect{0, 80, 100, 40}
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 100}, mouse_pressed = {.LEFT}})
+	button(&frame, add_rect, "Add")
+	testing.expect(t, !button(&frame, reset_rect, "Reset"), "no click on press")
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 100}, mouse_released = {.LEFT}})
+	button(&frame, add_rect, "Add")
+	testing.expect(t, button(&frame, reset_rect, "Reset"), "first button must not steal active")
+}
+
 @test button_drag_off_cancels_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)
