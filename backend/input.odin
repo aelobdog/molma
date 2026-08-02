@@ -1,0 +1,80 @@
+// Copyright 2026 Ashwin K. Godbole (aelobdog)
+// SPDX-License-Identifier: Apache-2.0
+
+package backend
+
+import rl "vendor:raylib"
+
+MouseButton :: enum u8 {
+	LEFT,
+	RIGHT,
+	MIDDLE,
+}
+
+Modifier :: enum u8 {
+	SHIFT,
+	CTRL,
+	ALT,
+	SUPER,
+}
+
+Input :: struct {
+	mouse_pos:      [2]f32,
+	mouse_wheel:    f32,
+	mouse_down:     bit_set[MouseButton],
+	mouse_pressed:  bit_set[MouseButton],
+	mouse_released: bit_set[MouseButton],
+	mods:           bit_set[Modifier],
+	typed:          [16]rune,
+	typed_count:    int,
+}
+
+refresh_input :: proc(window: ^Window) {
+	input := &window.input
+	input.typed_count = 0
+
+	pos := rl.GetMousePosition()
+	input.mouse_pos = [2]f32{pos.x, pos.y}
+	input.mouse_wheel = rl.GetMouseWheelMove()
+
+	input.mouse_down = {}
+	input.mouse_pressed = {}
+	input.mouse_released = {}
+	for button in MouseButton {
+		rb := rl.MouseButton(button)
+		if rl.IsMouseButtonDown(rb) {
+			input.mouse_down += {button}
+		}
+		if rl.IsMouseButtonPressed(rb) {
+			input.mouse_pressed += {button}
+		}
+		if rl.IsMouseButtonReleased(rb) {
+			input.mouse_released += {button}
+		}
+	}
+
+	input.mods = {}
+	if rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT) {
+		input.mods += {.SHIFT}
+	}
+	if rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL) {
+		input.mods += {.CTRL}
+	}
+	if rl.IsKeyDown(.LEFT_ALT) || rl.IsKeyDown(.RIGHT_ALT) {
+		input.mods += {.ALT}
+	}
+	if rl.IsKeyDown(.LEFT_SUPER) || rl.IsKeyDown(.RIGHT_SUPER) {
+		input.mods += {.SUPER}
+	}
+
+	for {
+		ch := rl.GetCharPressed()
+		if ch == 0 {
+			break
+		}
+		if input.typed_count < len(input.typed) {
+			input.typed[input.typed_count] = rune(ch)
+			input.typed_count += 1
+		}
+	}
+}

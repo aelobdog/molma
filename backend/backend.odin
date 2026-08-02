@@ -15,6 +15,7 @@ Color :: struct {
 Window :: struct {
 	width:  i32,
 	height: i32,
+	input:  Input,
 }
 
 init :: proc(width, height: i32, title: cstring) -> Window {
@@ -35,6 +36,7 @@ should_close :: proc(window: ^Window) -> bool {
 begin_frame :: proc(window: ^Window) {
 	window.width = rl.GetScreenWidth()
 	window.height = rl.GetScreenHeight()
+	refresh_input(window)
 	rl.BeginDrawing()
 }
 
