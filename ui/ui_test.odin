@@ -126,6 +126,83 @@ test_frame :: proc(commands: ^[dynamic]draw.DrawCommand) -> Frame {
 	testing.expect_value(t, r2.x, f32(136))
 }
 
+@test text_input_accepts_typed_chars_when_focused_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	buffer := make([dynamic]u8)
+	append(&buffer, 0)
+	defer delete(buffer)
+	rect := draw.Rect{0, 0, 200, 40}
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, mouse_pressed = {.LEFT}})
+	text_input(&frame, rect, &buffer)
+
+	input := backend.Input{mouse_pos = {50, 20}}
+	input.typed[0], input.typed[1], input.typed[2] = 'a', 'b', 'c'
+	input.typed_count = 3
+	begin_frame(&frame, &commands, input)
+	changed := text_input(&frame, rect, &buffer)
+	testing.expect(t, changed)
+	testing.expect_value(t, string(buffer[:len(buffer) - 1]), "abc")
+}
+
+@test text_input_ignores_typing_when_unfocused_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	buffer := make([dynamic]u8)
+	append(&buffer, 0)
+	defer delete(buffer)
+	rect := draw.Rect{0, 0, 200, 40}
+
+	input := backend.Input{mouse_pos = {500, 500}}
+	input.typed[0] = 'a'
+	input.typed_count = 1
+	begin_frame(&frame, &commands, input)
+	changed := text_input(&frame, rect, &buffer)
+	testing.expect(t, !changed)
+	testing.expect_value(t, string(buffer[:len(buffer) - 1]), "")
+}
+
+@test text_input_backspace_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	buffer := make([dynamic]u8)
+	append(&buffer, 'a')
+	append(&buffer, 'b')
+	append(&buffer, 0)
+	defer delete(buffer)
+	rect := draw.Rect{0, 0, 200, 40}
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, mouse_pressed = {.LEFT}})
+	text_input(&frame, rect, &buffer)
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, keys_pressed = {.BACKSPACE}})
+	changed := text_input(&frame, rect, &buffer)
+	testing.expect(t, changed)
+	testing.expect_value(t, string(buffer[:len(buffer) - 1]), "a")
+}
+
+@test text_input_unfocus_on_click_elsewhere_test :: proc(t: ^testing.T) {
+	commands := make([dynamic]draw.DrawCommand)
+	defer delete(commands)
+	frame := test_frame(&commands)
+	buffer := make([dynamic]u8)
+	append(&buffer, 0)
+	defer delete(buffer)
+	rect := draw.Rect{0, 0, 200, 40}
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {50, 20}, mouse_pressed = {.LEFT}})
+	text_input(&frame, rect, &buffer)
+	testing.expect_value(t, frame.focus, rect)
+
+	begin_frame(&frame, &commands, backend.Input{mouse_pos = {500, 500}, mouse_pressed = {.LEFT}})
+	text_input(&frame, rect, &buffer)
+	testing.expect_value(t, frame.focus, draw.Rect{})
+}
+
 @test text_width_scales_with_size_test :: proc(t: ^testing.T) {
 	commands := make([dynamic]draw.DrawCommand)
 	defer delete(commands)

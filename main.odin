@@ -15,6 +15,9 @@ main :: proc() {
 	theme := ui.default_theme()
 	font := backend.font_metrics(&window)
 	count := 0
+	name := make([dynamic]u8)
+	append(&name, 0)
+	defer delete(name)
 	frame: ui.Frame
 	frame.theme = theme
 	frame.font = font
@@ -34,11 +37,12 @@ main :: proc() {
 			if ui.button(&frame, ui.below(&layout, 40), "Reset") {
 				count = 0
 			}
+			ui.text_input(&frame, ui.below(&layout, 40), &name)
 			ui.end_panel(&frame)
 		}
 
 		buf: [32]u8
-		s := fmt.bprintf(buf[:], "count: %d", count)
+		s := fmt.bprintf(buf[:], "count: %d | name: %s", count, string(name[:len(name) - 1]))
 		ui.text(&frame, {280, 30}, s, 24, theme.text)
 
 		backend.execute_commands(&window, commands[:])

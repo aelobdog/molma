@@ -13,6 +13,8 @@ Theme :: struct {
 	panel:        draw.Color,
 	button:       draw.Color,
 	button_hover: draw.Color,
+	input:        draw.Color,
+	input_focus:  draw.Color,
 	text:         draw.Color,
 	text_size:    f32,
 	padding:      f32,
@@ -23,6 +25,8 @@ default_theme :: proc() -> Theme {
 		panel        = draw.Color{0x28, 0x28, 0x28, 0xff},
 		button       = draw.Color{0x3a, 0x3a, 0x3a, 0xff},
 		button_hover = draw.Color{0x4a, 0x4a, 0x4a, 0xff},
+		input        = draw.Color{0x1e, 0x1e, 0x1e, 0xff},
+		input_focus  = draw.Color{0x24, 0x24, 0x24, 0xff},
 		text         = draw.Color{0xee, 0xee, 0xee, 0xff},
 		text_size    = 18,
 		padding      = 8,
@@ -36,6 +40,7 @@ Frame :: struct {
 	font:        backend.FontMetrics,
 	active:      bool,
 	active_rect: draw.Rect,
+	focus:       draw.Rect,
 }
 
 begin_frame :: proc(frame: ^Frame, commands: ^[dynamic]draw.DrawCommand, input: backend.Input) {
@@ -128,4 +133,54 @@ button :: proc(frame: ^Frame, rect: draw.Rect, label: string) -> bool {
 	text(frame, label_pos, label, frame.theme.text_size, frame.theme.text)
 
 	return clicked
+}
+
+// text_input edits buffer in place; buffer always ends with a null
+// byte, so string(buffer[:len-1]) is the value. Returns true if the
+// text changed this frame.
+text_input :: proc(frame: ^Frame, rect: draw.Rect, buffer: ^[dynamic]u8) -> bool {
+	hovered := point_in_rect(frame.input.mouse_pos, rect)
+	if .LEFT in frame.input.mouse_pressed {
+		if hovered {
+			frame.focus = rect
+		} else if frame.focus == rect {
+			frame.focus = {}
+		}
+	}
+
+	focused := frame.focus == rect
+	changed := false
+	if focused {
+		if .BACKSPACE in frame.input.keys_pressed && len(buffer) > 1 {
+			buffer[len(buffer) - 2] = 0
+			resize(buffer, len(buffer) - 1)
+			changed = true
+		}
+		for i in 0 ..< frame.input.typed_count {
+			r := frame.input.typed[i]
+			if r < 0x20 || r >= 0x100 || len(buffer) - 1 >= 64 {
+				continue
+			}
+			append(buffer, 0)
+			buffer[len(buffer) - 2] = u8(r)
+			changed = true
+		}
+	}
+
+	color := frame.theme.input
+	if focused {
+		color = frame.theme.input_focus
+	}
+	fill_rect(frame, rect, color)
+
+	value := string(buffer[:len(buffer) - 1])
+	text_pos := [2]f32 {rect.x + frame.theme.padding, rect.y + (rect.h - frame.theme.text_size) / 2}
+	text(frame, text_pos, value, frame.theme.text_size, frame.theme.text)
+
+	if focused {
+		caret_x := text_pos.x + text_width(frame, value, frame.theme.text_size) + 1
+		fill_rect(frame, draw.Rect{caret_x, rect.y + frame.theme.padding, 2, rect.h - 2 * frame.theme.padding}, frame.theme.text)
+	}
+
+	return changed
 }

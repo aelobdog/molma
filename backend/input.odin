@@ -18,6 +18,18 @@ Modifier :: enum u8 {
 	SUPER,
 }
 
+Key :: enum u8 {
+	BACKSPACE,
+	ENTER,
+	ESCAPE,
+	TAB,
+	LEFT,
+	RIGHT,
+	HOME,
+	END,
+	DELETE,
+}
+
 Input :: struct {
 	mouse_pos:      [2]f32,
 	mouse_wheel:    f32,
@@ -25,6 +37,7 @@ Input :: struct {
 	mouse_pressed:  bit_set[MouseButton],
 	mouse_released: bit_set[MouseButton],
 	mods:           bit_set[Modifier],
+	keys_pressed:   bit_set[Key],
 	typed:          [16]rune,
 	typed_count:    int,
 }
@@ -65,6 +78,24 @@ refresh_input :: proc(window: ^Window) {
 	}
 	if rl.IsKeyDown(.LEFT_SUPER) || rl.IsKeyDown(.RIGHT_SUPER) {
 		input.mods += {.SUPER}
+	}
+
+	input.keys_pressed = {}
+	key_map := [9]rl.KeyboardKey {
+		.BACKSPACE,
+		.ENTER,
+		.ESCAPE,
+		.TAB,
+		.LEFT,
+		.RIGHT,
+		.HOME,
+		.END,
+		.DELETE,
+	}
+	for key, i in Key {
+		if rl.IsKeyPressed(key_map[i]) {
+			input.keys_pressed += {key}
+		}
 	}
 
 	for {
